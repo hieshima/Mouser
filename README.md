@@ -350,6 +350,18 @@ Contributions are welcome! To get started:
 - Linux porting
 - UI/UX polish and accessibility
 
+## Support the Project
+
+If Mouser saves you from installing Logitech Options+, consider supporting development:
+
+<p align="center">
+  <a href="https://github.com/sponsors/TomBadash">
+    <img src="https://img.shields.io/badge/Sponsor-❤️-ea4aaa?style=for-the-badge&logo=githubsponsors" alt="Sponsor" />
+  </a>
+</p>
+
+Every bit helps keep the project going — thank you!
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
