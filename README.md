@@ -13,6 +13,7 @@ No telemetry. No cloud. No Logitech account required.
 
 ## Features
 
+- **macOS support** — **full macOS compatibility added thanks to [andrew-sz](https://github.com/andrew-sz)**, using CGEventTap for mouse hooking, Quartz CGEvent for key simulation, and NSWorkspace for app detection. See [macOS Setup Guide](readme_mac_osx.md) for details.
 - **Remap all 6 programmable buttons** — middle click, gesture button, back, forward, horizontal scroll left/right
 - **Per-application profiles** — automatically switch button mappings when you switch apps (e.g., different bindings for Chrome vs. VS Code)
 - **22 built-in actions** across navigation, browser, editing, and media categories
@@ -106,10 +107,11 @@ That's it — the app will open and start remapping your mouse buttons immediate
 
 ### Prerequisites
 
-- **Windows 10 or 11**
+- **Windows 10/11** or **macOS 12+ (Monterey)**
 - **Python 3.10+** (tested with 3.14)
 - **Logitech MX Master 3S** paired via Bluetooth or USB receiver
 - **Logitech Options+ must NOT be running** (it conflicts with HID++ access)
+- **macOS only:** Accessibility permission required (System Settings → Privacy & Security → Accessibility)
 
 ### Steps
 
@@ -123,6 +125,7 @@ python -m venv .venv
 
 # 3. Activate it
 .venv\Scripts\activate        # Windows (PowerShell / CMD)
+source .venv/bin/activate      # macOS / Linux
 
 # 4. Install dependencies
 pip install -r requirements.txt
@@ -244,7 +247,7 @@ Mouser handles mouse power-off/on cycles automatically:
 
 ### Configuration
 
-All settings are stored in `%APPDATA%\Mouser\config.json`. The config supports:
+All settings are stored in `%APPDATA%\Mouser\config.json` (Windows) or `~/Library/Application Support/Mouser/config.json` (macOS). The config supports:
 - Multiple named profiles with per-profile button mappings
 - Per-profile app associations (list of `.exe` names)
 - Global settings: DPI, scroll inversion, start options
@@ -310,7 +313,7 @@ The app has two pages accessible from a slim sidebar:
 
 ## Known Limitations
 
-- **Windows only** — relies on `SetWindowsHookExW`, `SendInput`, and Windows Raw Input APIs
+- **Windows & macOS only** — Linux is not yet supported
 - **MX Master 3S only** — HID++ feature indices and CIDs are hardcoded for this device (PID `0xB034`)
 - **Bluetooth recommended** — HID++ gesture button divert works best over Bluetooth; USB receiver has partial support
 - **Conflicts with Logitech Options+** — both apps fight over HID++ access; quit Options+ before running Mouser
@@ -327,7 +330,8 @@ The app has two pages accessible from a slim sidebar:
 - [ ] **Per-app profile auto-creation** — detect new apps and prompt to create a profile
 - [ ] **Export/import config** — share configurations between machines
 - [ ] **Tray icon badge** — show active profile name in tray tooltip
-- [ ] **Linux / macOS support** — investigate `libevdev` (Linux) and `IOKit` (macOS) hooks
+- [x] **macOS support** — added via CGEventTap, Quartz CGEvent, and NSWorkspace (thanks [@andrew-sz](https://github.com/andrew-sz))
+- [ ] **Linux support** — investigate `libevdev` / `evdev` hooks
 - [ ] **Plugin system** — allow third-party action providers
 
 ## Contributing
@@ -343,12 +347,18 @@ Contributions are welcome! To get started:
 
 - Testing with other Logitech HID++ devices
 - Scroll inversion improvements
-- Linux/macOS porting
+- Linux porting
 - UI/UX polish and accessibility
 
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## Acknowledgments
+
+- **[@andrew-sz](https://github.com/andrew-sz)** — macOS port: CGEventTap mouse hooking, Quartz key simulation, NSWorkspace app detection, and NSEvent media key support
 
 ---
 
