@@ -381,68 +381,107 @@ Item {
                             }
                         }
 
-                        // Connection status badge
-                        Rectangle {
+                        // Right-side status row: delete button + battery + connection
+                        Row {
                             anchors {
                                 right: parent.right; rightMargin: 28
                                 verticalCenter: parent.verticalCenter
                             }
-                            width: statusRow.implicitWidth + 16
-                            height: 24; radius: 12
-                            color: backend.mouseConnected
-                                   ? Qt.rgba(0, 0.83, 0.67, 0.12)
-                                   : Qt.rgba(0.9, 0.3, 0.3, 0.15)
+                            spacing: 8
 
-                            Row {
-                                id: statusRow
-                                anchors.centerIn: parent
-                                spacing: 5
+                            // Delete profile button (not for default)
+                            Rectangle {
+                                visible: selectedProfile !== ""
+                                         && selectedProfile !== "default"
+                                width: delText.implicitWidth + 20
+                                height: 24; radius: 8
+                                color: delMa.containsMouse ? "#aa3333" : "#662222"
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                anchors.verticalCenter: parent.verticalCenter
 
-                                Rectangle {
-                                    width: 7; height: 7; radius: 4
-                                    color: backend.mouseConnected
-                                           ? Theme.accent : "#e05555"
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
                                 Text {
-                                    text: backend.mouseConnected
-                                          ? "Connected" : "Not Connected"
-                                    font { family: Theme.fontFamily; pixelSize: 11 }
-                                    color: backend.mouseConnected
-                                           ? Theme.accent : "#e05555"
+                                    id: delText
+                                    anchors.centerIn: parent
+                                    text: "Delete Profile"
+                                    font { family: Theme.fontFamily; pixelSize: 10; bold: true }
+                                    color: Theme.textPrimary
+                                }
+
+                                MouseArea {
+                                    id: delMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        backend.deleteProfile(selectedProfile)
+                                        selectProfile(backend.activeProfile)
+                                    }
                                 }
                             }
-                        }
 
-                        // Delete profile button (not for default)
-                        Rectangle {
-                            visible: selectedProfile !== ""
-                                     && selectedProfile !== "default"
-                            anchors {
-                                right: parent.right; rightMargin: 120
-                                verticalCenter: parent.verticalCenter
+                            // Battery badge
+                            Rectangle {
+                                visible: backend.batteryLevel >= 0
+                                width: battRow.implicitWidth + 16
+                                height: 24; radius: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: {
+                                    var lvl = backend.batteryLevel
+                                    if (lvl < 20) return Qt.rgba(0.88, 0.2, 0.2, 0.18)
+                                    if (lvl <= 69) return Qt.rgba(0.9, 0.75, 0.1, 0.18)
+                                    return Qt.rgba(0, 0.83, 0.67, 0.12)
+                                }
+
+                                Row {
+                                    id: battRow
+                                    anchors.centerIn: parent
+                                    spacing: 4
+
+                                    Text {
+                                        text: "🔋"
+                                        font { pixelSize: 11 }
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    Text {
+                                        text: backend.batteryLevel + "%"
+                                        font { family: Theme.fontFamily; pixelSize: 11; bold: true }
+                                        color: {
+                                            var lvl = backend.batteryLevel
+                                            if (lvl < 20) return "#e05555"
+                                            if (lvl <= 69) return "#e0b840"
+                                            return Theme.accent
+                                        }
+                                    }
+                                }
                             }
-                            width: delText.implicitWidth + 20
-                            height: 24; radius: 8
-                            color: delMa.containsMouse ? "#aa3333" : "#662222"
-                            Behavior on color { ColorAnimation { duration: 120 } }
 
-                            Text {
-                                id: delText
-                                anchors.centerIn: parent
-                                text: "Delete Profile"
-                                font { family: Theme.fontFamily; pixelSize: 10; bold: true }
-                                color: Theme.textPrimary
-                            }
+                            // Connection status badge
+                            Rectangle {
+                                width: statusRow.implicitWidth + 16
+                                height: 24; radius: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: backend.mouseConnected
+                                       ? Qt.rgba(0, 0.83, 0.67, 0.12)
+                                       : Qt.rgba(0.9, 0.3, 0.3, 0.15)
 
-                            MouseArea {
-                                id: delMa
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    backend.deleteProfile(selectedProfile)
-                                    selectProfile(backend.activeProfile)
+                                Row {
+                                    id: statusRow
+                                    anchors.centerIn: parent
+                                    spacing: 5
+
+                                    Rectangle {
+                                        width: 7; height: 7; radius: 4
+                                        color: backend.mouseConnected
+                                               ? Theme.accent : "#e05555"
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    Text {
+                                        text: backend.mouseConnected
+                                              ? "Connected" : "Not Connected"
+                                        font { family: Theme.fontFamily; pixelSize: 11 }
+                                        color: backend.mouseConnected
+                                               ? Theme.accent : "#e05555"
+                                    }
                                 }
                             }
                         }
