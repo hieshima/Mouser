@@ -338,22 +338,21 @@ class Engine:
     def start(self):
         self.hook.start()
         self._app_detector.start()
-        # Read current DPI from device on startup (don't overwrite it)
-        def _read_dpi():
+        # Apply persisted DPI to the device once HID++ is ready
+        def _apply_saved_dpi():
             import time
             time.sleep(3)  # give HID++ time to connect
             hg = self.hook._hid_gesture
             if hg:
-                current = hg.read_dpi()
-                if current is not None:
-                    self.cfg.setdefault("settings", {})["dpi"] = current
-                    save_config(self.cfg)
+                saved = self.cfg.get("settings", {}).get("dpi")
+                if saved:
+                    hg.set_dpi(saved)
                     if self._dpi_read_cb:
                         try:
-                            self._dpi_read_cb(current)
+                            self._dpi_read_cb(saved)
                         except Exception:
                             pass
-        threading.Thread(target=_read_dpi, daemon=True).start()
+        threading.Thread(target=_apply_saved_dpi, daemon=True).start()
 
     def set_dpi_read_callback(self, cb):
         """Register a callback ``cb(dpi_value)`` invoked when DPI is read from device."""
