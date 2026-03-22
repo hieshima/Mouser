@@ -591,6 +591,7 @@ class HidGestureListener:
         self._dpi_result  = None        # True/False after apply
         self._pending_battery = None
         self._battery_result = None
+        self._last_logged_battery = None
         self._connected_device_info = None
 
     # ── public API ────────────────────────────────────────────────
@@ -993,7 +994,9 @@ class HidGestureListener:
                 _, _, _, _, params = resp
                 level = params[0] if params else None
                 if level is not None and 0 <= level <= 100:
-                    print(f"[HidGesture] Battery (unified): {level}%")
+                    if level != self._last_logged_battery:
+                        print(f"[HidGesture] Battery (unified): {level}%")
+                        self._last_logged_battery = level
                     self._battery_result = level
                 else:
                     self._battery_result = None
@@ -1005,7 +1008,9 @@ class HidGestureListener:
                 _, _, _, _, params = resp
                 level = params[0] if params else None
                 if level is not None and 0 <= level <= 100:
-                    print(f"[HidGesture] Battery (status): {level}%")
+                    if level != self._last_logged_battery:
+                        print(f"[HidGesture] Battery (status): {level}%")
+                        self._last_logged_battery = level
                     self._battery_result = level
                 else:
                     self._battery_result = None
@@ -1219,14 +1224,18 @@ class HidGestureListener:
 
     def _main_loop(self):
         """Outer loop: connect → listen → reconnect on error/disconnect."""
+        retry_logged = False
         while self._running:
             if not self._try_connect():
-                print("[HidGesture] No compatible device; retrying in 5 s…")
+                if not retry_logged:
+                    print("[HidGesture] No compatible device; retrying in 5 s…")
+                    retry_logged = True
                 for _ in range(50):
                     if not self._running:
                         return
                     time.sleep(0.1)
                 continue
+            retry_logged = False
 
             self._connected = True
             if self._on_connect:
@@ -1264,6 +1273,7 @@ class HidGestureListener:
             self._battery_idx = None
             self._battery_feature_id = None
             self._pending_battery = None
+            self._last_logged_battery = None
             self._held = False
             self._gesture_cid = DEFAULT_GESTURE_CID
             self._gesture_candidates = list(DEFAULT_GESTURE_CIDS)

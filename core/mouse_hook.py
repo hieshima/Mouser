@@ -1587,6 +1587,7 @@ elif sys.platform == "linux":
             self._evdev_device = None
             self._uinput = None
             self._evdev_thread = None
+            self._rescan_requested = threading.Event()
 
         # -- standard interface methods ---------------------------------
 
@@ -1891,6 +1892,12 @@ elif sys.platform == "linux":
                 self._hid_gesture.connected_device if self._hid_gesture else None
             )
             self._set_device_connected(True)
+            # If evdev is currently grabbing a non-Logitech device,
+            # request a rescan so we switch to the reconnected Logitech.
+            dev = self._evdev_device
+            if dev is not None and dev.info.vendor != _LOGI_VENDOR:
+                print("[MouseHook] Logitech HID reconnected; requesting evdev rescan")
+                self._rescan_requested.set()
 
         def _on_hid_disconnect(self):
             self._connected_device = None
@@ -1992,6 +1999,7 @@ elif sys.platform == "linux":
         def _evdev_loop(self):
             """Outer loop: find device -> listen -> reconnect on error."""
             while self._running:
+                self._rescan_requested.clear()
                 if not self._setup_evdev():
                     if self._running:
                         time.sleep(2)
@@ -2013,6 +2021,9 @@ elif sys.platform == "linux":
             """Read events from the grabbed device, forward or block."""
             fd = self._evdev_device.fd
             while self._running:
+                if self._rescan_requested.is_set():
+                    print("[MouseHook] Rescan requested; leaving listen loop")
+                    return
                 readable, _, _ = _select_mod.select([fd], [], [], 0.5)
                 if not readable:
                     continue
