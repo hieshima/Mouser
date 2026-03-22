@@ -19,6 +19,16 @@ class BackendDeviceLayoutTests(unittest.TestCase):
         ):
             return Backend(engine=None)
 
+    @staticmethod
+    def _fake_create_profile(cfg, name, label=None, copy_from="default", apps=None):
+        updated = copy.deepcopy(cfg)
+        updated.setdefault("profiles", {})[name] = {
+            "label": label or name,
+            "apps": list(apps or []),
+            "mappings": {},
+        }
+        return updated
+
     def test_defaults_to_generic_layout_without_connected_device(self):
         backend = self._make_backend()
 
@@ -62,6 +72,77 @@ class BackendDeviceLayoutTests(unittest.TestCase):
 
         self.assertEqual(apps[0]["path"], "/usr/bin/code")
         self.assertEqual(len(notifications), 1)
+
+    def test_add_profile_stores_catalog_id_for_linux_app(self):
+        backend = self._make_backend()
+        fake_catalog = [
+            {
+                "id": "firefox.desktop",
+                "label": "Firefox",
+                "path": "/usr/bin/firefox",
+                "aliases": ["firefox.desktop", "/usr/bin/firefox", "firefox"],
+                "legacy_icon": "",
+            }
+        ]
+        fake_entry = {
+            "id": "firefox.desktop",
+            "label": "Firefox",
+            "path": "/usr/bin/firefox",
+            "aliases": ["firefox.desktop", "/usr/bin/firefox", "firefox"],
+            "legacy_icon": "",
+        }
+
+        with (
+            patch("ui.backend.app_catalog.get_app_catalog", return_value=fake_catalog),
+            patch("ui.backend.app_catalog.resolve_app_spec", return_value=fake_entry),
+            patch("ui.backend.create_profile", side_effect=self._fake_create_profile),
+        ):
+            backend.addProfile("firefox.desktop")
+
+        self.assertEqual(
+            backend._cfg["profiles"]["firefox"]["apps"],
+            ["firefox.desktop"],
+        )
+
+    def test_add_profile_rejects_linux_duplicate_when_existing_profile_uses_legacy_path(self):
+        backend = self._make_backend()
+        backend._cfg["profiles"]["firefox"] = {
+            "label": "Firefox",
+            "apps": ["/usr/bin/firefox"],
+            "mappings": {},
+        }
+        fake_catalog = [
+            {
+                "id": "firefox.desktop",
+                "label": "Firefox",
+                "path": "/usr/bin/firefox",
+                "aliases": ["firefox.desktop", "/usr/bin/firefox", "firefox"],
+                "legacy_icon": "",
+            }
+        ]
+        status_messages = []
+        backend.statusMessage.connect(status_messages.append)
+
+        def resolve_app(spec):
+            if spec in ("firefox.desktop", "/usr/bin/firefox"):
+                return {
+                    "id": "firefox.desktop",
+                    "label": "Firefox",
+                    "path": "/usr/bin/firefox",
+                    "aliases": ["firefox.desktop", "/usr/bin/firefox", "firefox"],
+                    "legacy_icon": "",
+                }
+            return None
+
+        with (
+            patch("ui.backend.app_catalog.get_app_catalog", return_value=fake_catalog),
+            patch("ui.backend.app_catalog.resolve_app_spec", side_effect=resolve_app),
+            patch("ui.backend.create_profile") as create_profile,
+        ):
+            backend.addProfile("firefox.desktop")
+
+        create_profile.assert_not_called()
+        self.assertIn("Profile already exists", status_messages)
 
 
 if __name__ == "__main__":

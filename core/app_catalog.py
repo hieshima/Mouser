@@ -801,6 +801,9 @@ def _read_linux_desktop_entry(desktop_path: str):
         os.path.basename(exec_path),
         Path(exec_path).stem,
     ]
+    startup_wm_class = fields.get("StartupWMClass", "")
+    if startup_wm_class:
+        aliases.append(startup_wm_class)
     if hint:
         aliases.extend(hint.get("aliases", []))
 
@@ -858,12 +861,64 @@ def _find_catalog_entry(spec: str):
     return None
 
 
+def _linux_catalog_path_tokens(path: str):
+    normalized = os.path.realpath(path)
+    basename = os.path.basename(normalized)
+    stem = Path(normalized).stem
+    return normalized, basename, stem
+
+
+def _linux_catalog_entry_for_path(path: str):
+    normalized, basename, stem = _linux_catalog_path_tokens(path)
+    entries = get_app_catalog()
+
+    def matches_for(value: str):
+        key = value.casefold()
+        return [
+            entry for entry in entries
+            if key == entry["id"].casefold()
+            or any(alias.casefold() == key for alias in entry.get("aliases", []))
+        ]
+
+    exact_matches = matches_for(normalized)
+    if exact_matches:
+        return exact_matches[0]
+
+    basename_matches = matches_for(basename)
+    if len(basename_matches) == 1:
+        return basename_matches[0]
+
+    stem_matches = matches_for(stem)
+    if len(stem_matches) == 1:
+        return stem_matches[0]
+
+    return None
+
+
+def _linux_catalog_matched_entry(catalog_entry: dict, observed_path: str):
+    normalized, basename, stem = _linux_catalog_path_tokens(observed_path)
+    aliases = list(catalog_entry.get("aliases", []))
+    aliases.extend([normalized, basename, stem])
+    return _make_entry(
+        catalog_entry["id"],
+        catalog_entry.get("label", catalog_entry["id"]),
+        path=catalog_entry.get("path") or observed_path,
+        aliases=aliases,
+        legacy_icon=catalog_entry.get("legacy_icon", ""),
+    )
+
+
 def _resolve_path_entry(path: str):
     if not path:
         return None
 
-    normalized = os.path.abspath(path)
+    normalized = os.path.realpath(path) if sys.platform == "linux" else os.path.abspath(path)
     path_exists = os.path.exists(normalized)
+
+    if sys.platform == "linux" and path_exists:
+        catalog_entry = _linux_catalog_entry_for_path(normalized)
+        if catalog_entry:
+            return _linux_catalog_matched_entry(catalog_entry, normalized)
 
     if sys.platform == "darwin" and normalized.endswith(".app"):
         if not path_exists:

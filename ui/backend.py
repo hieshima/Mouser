@@ -327,6 +327,51 @@ class Backend(QObject):
             })
         return result
 
+    def _catalog_app_id(self, spec):
+        entry = app_catalog.resolve_app_spec(spec)
+        if not entry:
+            return ""
+        entry_id = entry.get("id", "")
+        for catalog_entry in app_catalog.get_app_catalog():
+            if catalog_entry.get("id", "").lower() == entry_id.lower():
+                return catalog_entry["id"]
+        return ""
+
+    def _profile_app_identity(self, spec):
+        catalog_id = self._catalog_app_id(spec)
+        if catalog_id:
+            return ("catalog", catalog_id.lower())
+
+        entry = app_catalog.resolve_app_spec(spec)
+        path = entry.get("path", "") if entry else ""
+        if not path:
+            path = spec or ""
+        if not path:
+            return ("", "")
+        if sys.platform == "linux":
+            normalized = os.path.realpath(path)
+        else:
+            normalized = os.path.normpath(path)
+        return ("path", normalized.lower())
+
+    def _profile_has_app(self, spec):
+        target_kind, target_value = self._profile_app_identity(spec)
+        if not target_value:
+            return False
+
+        for pdata in self._cfg.get("profiles", {}).values():
+            for existing in pdata.get("apps", []):
+                existing_kind, existing_value = self._profile_app_identity(existing)
+                if existing_kind == target_kind and existing_value == target_value:
+                    return True
+        return False
+
+    def _stored_profile_app_spec(self, entry, fallback_spec):
+        catalog_id = self._catalog_app_id(entry.get("id", ""))
+        if catalog_id:
+            return catalog_id
+        return entry.get("path") or fallback_spec
+
     # ── Slots ──────────────────────────────────────────────────
 
     @Slot(str, str)
@@ -448,12 +493,11 @@ class Backend(QObject):
         entry = app_catalog.resolve_app_spec(appId)
         if not entry:
             return
-        app_spec = entry.get("path") or entry["id"]
+        app_spec = self._stored_profile_app_spec(entry, appId)
         label = entry.get("label", appId)
-        for pdata in self._cfg.get("profiles", {}).values():
-            if app_spec.lower() in [a.lower() for a in pdata.get("apps", [])]:
-                self.statusMessage.emit("Profile already exists")
-                return
+        if self._profile_has_app(app_spec):
+            self.statusMessage.emit("Profile already exists")
+            return
         safe_name = re.sub(r"[^a-z0-9_]", "_", label.lower())[:32].strip("_")
         self._cfg = create_profile(self._cfg, safe_name, label=label, apps=[app_spec])
         if self._engine:
@@ -486,12 +530,12 @@ class Backend(QObject):
             path = os.path.normpath(path)
         entry = app_catalog.resolve_app_spec(path)
         label = entry.get("label") if entry else os.path.splitext(os.path.basename(path))[0]
-        for pdata in self._cfg.get("profiles", {}).values():
-            if path.lower() in [a.lower() for a in pdata.get("apps", [])]:
-                self.statusMessage.emit("Profile already exists")
-                return
+        app_spec = self._stored_profile_app_spec(entry, path) if entry else path
+        if self._profile_has_app(app_spec):
+            self.statusMessage.emit("Profile already exists")
+            return
         safe_name = re.sub(r"[^a-z0-9_]", "_", label.lower())[:32].strip("_")
-        self._cfg = create_profile(self._cfg, safe_name, label=label, apps=[path])
+        self._cfg = create_profile(self._cfg, safe_name, label=label, apps=[app_spec])
         if self._engine:
             self._engine.cfg = self._cfg
         self.profilesChanged.emit()
