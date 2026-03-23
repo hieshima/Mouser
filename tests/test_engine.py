@@ -1,7 +1,7 @@
 import copy
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from core.config import DEFAULT_CONFIG
 from core.mouse_hook import MouseEvent
@@ -14,6 +14,9 @@ class _FakeMouseHook:
         self.debug_mode = False
         self.connected_device = None
         self.device_connected = False
+        self._hid_gesture = None
+        self.start_called = False
+        self.stop_called = False
 
     def set_debug_callback(self, cb):
         self._debug_callback = cb
@@ -36,10 +39,35 @@ class _FakeMouseHook:
     def reset_bindings(self):
         pass
 
+    def start(self):
+        self.start_called = True
+
+    def stop(self):
+        self.stop_called = True
+
 
 class _FakeAppDetector:
     def __init__(self, callback):
         self.callback = callback
+        self.start_called = False
+        self.stop_called = False
+
+    def start(self):
+        self.start_called = True
+
+    def stop(self):
+        self.stop_called = True
+
+
+class _ImmediateThread:
+    def __init__(self, target=None, args=(), kwargs=None, **_):
+        self._target = target
+        self._args = args
+        self._kwargs = kwargs or {}
+
+    def start(self):
+        if self._target:
+            self._target(*self._args, **self._kwargs)
 
 
 class EngineHorizontalScrollTests(unittest.TestCase):
@@ -110,6 +138,28 @@ class EngineHorizontalScrollTests(unittest.TestCase):
         engine.set_connection_change_callback(seen.append)
 
         self.assertEqual(seen, [True])
+
+    def test_start_applies_saved_dpi_without_reading_device_dpi(self):
+        engine = self._make_engine()
+        engine.hook._hid_gesture = SimpleNamespace(
+            set_dpi=Mock(return_value=True),
+            read_dpi=Mock(),
+        )
+        seen = []
+        engine.set_dpi_read_callback(seen.append)
+
+        with (
+            patch("core.engine.threading.Thread", _ImmediateThread),
+            patch("time.sleep", return_value=None),
+        ):
+            engine.start()
+
+        expected = engine.cfg["settings"]["dpi"]
+        engine.hook._hid_gesture.set_dpi.assert_called_once_with(expected)
+        engine.hook._hid_gesture.read_dpi.assert_not_called()
+        self.assertEqual(seen, [expected])
+        self.assertTrue(engine.hook.start_called)
+        self.assertTrue(engine._app_detector.start_called)
 
 
 if __name__ == "__main__":
