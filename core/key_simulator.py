@@ -894,6 +894,16 @@ elif sys.platform == "linux":
             "keys": [KEY_LEFTMETA],
             "category": "Navigation",
         },
+        "space_left": {
+            "label": "Previous Desktop",
+            "keys": [KEY_LEFTCTRL, KEY_LEFTMETA, KEY_LEFT],
+            "category": "Navigation",
+        },
+        "space_right": {
+            "label": "Next Desktop",
+            "keys": [KEY_LEFTCTRL, KEY_LEFTMETA, KEY_RIGHT],
+            "category": "Navigation",
+        },
         "volume_up": {
             "label": "Volume Up",
             "keys": [KEY_VOLUMEUP],
