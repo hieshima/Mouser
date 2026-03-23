@@ -223,7 +223,12 @@ elif sys.platform == "linux":
         """Return the foreground app executable path on Linux."""
         if _WAYLAND:
             if _KDE:
-                return _get_foreground_kdotool()
+                exe = _get_foreground_kdotool()
+                if exe:
+                    return exe
+                # Fall back to xdotool so XWayland apps still work when
+                # kdotool is unavailable or cannot resolve the active window.
+                return _get_foreground_xdotool()
             # GNOME / other Wayland compositors: not yet supported
             return None
         return _get_foreground_xdotool()

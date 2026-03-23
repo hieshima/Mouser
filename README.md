@@ -15,7 +15,7 @@ No telemetry. No cloud. No Logitech account required.
 ## Features
 
 - **macOS support** — full macOS compatibility using CGEventTap for mouse hooking, Quartz CGEvent for key simulation, and NSWorkspace for app detection. See [macOS Setup Guide](readme_mac_osx.md) for details.
-- **Experimental Linux support** — evdev/uinput button remapping, HID++ gesture support, and X11 foreground-app detection
+- **Experimental Linux support** — evdev/uinput button remapping, HID++ gesture support, X11 foreground-app detection, and KDE Wayland app detection via `kdotool`
 - **macOS start at login** — manages a per-user LaunchAgent from the UI, with an optional "Launch hidden after login" mode for menu-bar startup
 - **Remap supported programmable controls** — MX Master-family layouts expose middle click, gesture button, back, forward, and horizontal scroll actions
 - **Per-application profiles** — automatically switch button mappings when you switch apps (e.g., different bindings for Chrome vs. VS Code)
@@ -117,12 +117,12 @@ For macOS setup, native bundle packaging, and Accessibility / login-item notes, 
 
 ### Prerequisites
 
-- **Windows 10/11**, **macOS 12+ (Monterey)**, or **Linux (X11, experimental)**
+- **Windows 10/11**, **macOS 12+ (Monterey)**, or **Linux (experimental; X11 plus KDE Wayland app detection)**
 - **Python 3.10+** (tested with 3.14)
 - **A supported Logitech HID++ mouse** paired via Bluetooth or USB receiver. MX Master-family devices currently have the most complete UI support.
 - **Logitech Options+ must NOT be running** (it conflicts with HID++ access)
 - **macOS only:** Accessibility permission required (System Settings → Privacy & Security → Accessibility)
-- **Linux only:** `xdotool` must be installed for per-app profile switching on X11
+- **Linux only:** `xdotool` enables per-app profile switching on X11; `kdotool` additionally enables KDE Wayland detection
 - **Linux only:** read access to `/dev/input/event*` and write access to `/dev/uinput` are required for remapping (you may need to add your user to the `input` group)
 
 ### Steps
@@ -383,7 +383,7 @@ The app has two pages accessible from a slim sidebar:
 - **Conflicts with Logitech Options+** — both apps fight over HID++ access; quit Options+ before running Mouser
 - **Scroll inversion is experimental** — uses coalesced `PostMessage` injection to avoid LL hook deadlocks; may not work perfectly in all apps
 - **Admin not required** — but some games or elevated windows may not receive injected keystrokes
-- **Linux app detection is X11-only today** — per-app profile switching relies on `xdotool`, so Wayland sessions currently fall back to the default profile
+- **Linux app detection is still limited** — X11 works via `xdotool`, KDE Wayland works via `kdotool`, and GNOME / other Wayland compositors still fall back to the default profile
 - **Linux remapping needs device permissions** — Mouser must be able to read `/dev/input/event*` and write `/dev/uinput`
 
 ## Future Work
@@ -399,7 +399,7 @@ The app has two pages accessible from a slim sidebar:
 - [ ] **Export/import config** — share configurations between machines
 - [ ] **Tray icon badge** — show active profile name in tray tooltip
 - [x] **macOS support** — added via CGEventTap, Quartz CGEvent, and NSWorkspace
-- [ ] **Wayland support and broader Linux validation** — replace the current `xdotool` dependency and validate across more distros/desktops
+- [ ] **Broader Wayland support and Linux validation** — extend app detection beyond KDE Wayland / X11 and validate across more distros and desktop environments
 - [ ] **Plugin system** — allow third-party action providers
 
 ## Contributing
