@@ -3,6 +3,7 @@ Keyboard and mouse action simulator.
 Supports Windows (SendInput API) and macOS (Quartz CGEvent / NSEvent).
 """
 
+import os
 import sys
 import threading
 import time
@@ -712,6 +713,8 @@ elif sys.platform == "linux":
     KEY_UP = 103
     KEY_RIGHT = 106
     KEY_DOWN = 108
+    KEY_PAGEUP = 104
+    KEY_PAGEDOWN = 109
     KEY_A = 30
     KEY_C = 46
     KEY_D = 32
@@ -747,7 +750,7 @@ elif sys.platform == "linux":
     _ALL_KEY_CODES = [
         KEY_LEFTALT, KEY_LEFTSHIFT, KEY_LEFTCTRL, KEY_LEFTMETA,
         KEY_TAB, KEY_SPACE, KEY_ENTER, KEY_BACKSPACE, KEY_DELETE, KEY_ESC,
-        KEY_LEFT, KEY_UP, KEY_RIGHT, KEY_DOWN,
+        KEY_LEFT, KEY_UP, KEY_RIGHT, KEY_DOWN, KEY_PAGEUP, KEY_PAGEDOWN,
         KEY_A, KEY_C, KEY_D, KEY_F, KEY_N, KEY_S, KEY_T, KEY_V, KEY_W, KEY_X, KEY_Z,
         KEY_BACK, KEY_FORWARD,
         KEY_VOLUMEUP, KEY_VOLUMEDOWN, KEY_MUTE,
@@ -817,6 +820,22 @@ elif sys.platform == "linux":
             detents = delta // 120 if abs(delta) >= 120 else (1 if delta > 0 else -1)
             kbd.write(EV_REL, REL_HWHEEL, detents)
         kbd.syn()
+
+    _LINUX_DESKTOP = os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+
+    def _linux_workspace_keys(direction: str):
+        if "GNOME" in _LINUX_DESKTOP:
+            return (
+                [KEY_LEFTMETA, KEY_PAGEUP]
+                if direction == "left"
+                else [KEY_LEFTMETA, KEY_PAGEDOWN]
+            )
+        # KDE/Plasma defaults, and a pragmatic fallback for other desktops.
+        return (
+            [KEY_LEFTCTRL, KEY_LEFTMETA, KEY_LEFT]
+            if direction == "left"
+            else [KEY_LEFTCTRL, KEY_LEFTMETA, KEY_RIGHT]
+        )
 
     ACTIONS = {
         "alt_tab": {
@@ -896,12 +915,12 @@ elif sys.platform == "linux":
         },
         "space_left": {
             "label": "Previous Desktop",
-            "keys": [KEY_LEFTCTRL, KEY_LEFTMETA, KEY_LEFT],
+            "keys": _linux_workspace_keys("left"),
             "category": "Navigation",
         },
         "space_right": {
             "label": "Next Desktop",
-            "keys": [KEY_LEFTCTRL, KEY_LEFTMETA, KEY_RIGHT],
+            "keys": _linux_workspace_keys("right"),
             "category": "Navigation",
         },
         "volume_up": {

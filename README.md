@@ -19,7 +19,7 @@ No telemetry. No cloud. No Logitech account required.
 - **macOS start at login** — manages a per-user LaunchAgent from the UI, with an optional "Launch hidden after login" mode for menu-bar startup
 - **Remap supported programmable controls** — MX Master-family layouts expose middle click, gesture button, back, forward, and horizontal scroll actions
 - **Per-application profiles** — automatically switch button mappings when you switch apps (e.g., different bindings for Chrome vs. VS Code)
-- **Desktop navigation actions** — includes previous/next desktop switching on both platforms, plus Mission Control, App Expose, Launchpad, and Show Desktop on macOS
+- **Desktop navigation actions** — includes previous/next desktop switching on Windows, macOS, and Linux (GNOME/KDE defaults), plus Mission Control, App Expose, Launchpad, and Show Desktop on macOS
 - **Platform-aware built-in actions** across navigation, browser, editing, and media categories
 - **DPI / pointer speed control** — slider from 200–8000 DPI with quick presets, synced to the device via HID++
 - **Scroll direction inversion** — independent toggles for vertical and horizontal scroll
