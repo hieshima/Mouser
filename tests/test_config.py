@@ -397,12 +397,20 @@ class AppCatalogTests(unittest.TestCase):
             patch.object(app_catalog.sys, "platform", "linux"),
             patch.object(app_catalog, "get_app_catalog", return_value=fake_catalog),
             patch.object(app_catalog.os.path, "exists", return_value=True),
+            patch.object(
+                app_catalog.os.path,
+                "realpath",
+                side_effect=lambda value: {
+                    "/usr/bin/firefox": "/opt/firefox/firefox",
+                    "/usr/lib64/firefox/firefox": "/usr/lib64/firefox/firefox",
+                }.get(value, value),
+            ),
         ):
             resolved = app_catalog.resolve_app_spec("/usr/lib64/firefox/firefox")
 
         self.assertEqual(resolved["id"], "firefox.desktop")
         self.assertEqual(resolved["label"], "Firefox")
-        self.assertEqual(resolved["path"], "/usr/bin/firefox")
+        self.assertEqual(resolved["path"], "/opt/firefox/firefox")
         self.assertIn("/usr/lib64/firefox/firefox", resolved["aliases"])
 
 
