@@ -472,7 +472,12 @@ class Backend(QObject):
             return
         self._cfg.setdefault("settings", {})["start_at_login"] = enabled
         save_config(self._cfg)
-        apply_login_startup(enabled)
+        try:
+            apply_login_startup(enabled)
+        except Exception as exc:
+            self.settingsChanged.emit()
+            self.statusMessage.emit(f"Failed to update login item: {exc}")
+            return
         self.settingsChanged.emit()
         self.statusMessage.emit(
             "Start at login enabled" if enabled else "Start at login disabled"

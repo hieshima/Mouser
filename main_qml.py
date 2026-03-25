@@ -371,7 +371,7 @@ def main():
     _t5 = _time.perf_counter()
     argv, hid_backend, start_hidden = _parse_cli_args(sys.argv)
     cfg_settings = load_config().get("settings", {})
-    launch_hidden = start_hidden or bool(cfg_settings.get("start_minimized", True))
+    launch_hidden = start_hidden or bool(cfg_settings.get("start_minimized", False))
     if hid_backend:
         try:
             set_hid_backend_preference(hid_backend)
