@@ -386,6 +386,11 @@ if sys.platform == "win32":
             "keys": [VK_END],
             "category": "Navigation",
         },
+        "switch_scroll_mode": {
+            "label": "Switch Scroll Mode (Ratchet / Free Spin)",
+            "keys": [],               # handled by Engine, not key_simulator
+            "category": "Scroll",
+        },
         "toggle_smart_shift": {
             "label": "Toggle SmartShift",
             "keys": [],               # handled by Engine, not key_simulator
@@ -852,6 +857,11 @@ elif sys.platform == "darwin":
             "keys": [kVK_End],
             "category": "Navigation",
         },
+        "switch_scroll_mode": {
+            "label": "Switch Scroll Mode (Ratchet / Free Spin)",
+            "keys": [],               # handled by Engine, not key_simulator
+            "category": "Scroll",
+        },
         "toggle_smart_shift": {
             "label": "Toggle SmartShift",
             "keys": [],               # handled by Engine, not key_simulator
@@ -1180,6 +1190,11 @@ elif sys.platform == "linux":
             "keys": [KEY_END],
             "category": "Navigation",
         },
+        "switch_scroll_mode": {
+            "label": "Switch Scroll Mode (Ratchet / Free Spin)",
+            "keys": [],               # handled by Engine, not key_simulator
+            "category": "Scroll",
+        },
         "toggle_smart_shift": {
             "label": "Toggle SmartShift",
             "keys": [],               # handled by Engine, not key_simulator
@@ -1240,6 +1255,11 @@ else:
     def execute_action(action_id): pass
 
     ACTIONS = {
+        "switch_scroll_mode": {
+            "label": "Switch Scroll Mode (Ratchet / Free Spin)",
+            "keys": [],               # handled by Engine, not key_simulator
+            "category": "Scroll",
+        },
         "toggle_smart_shift": {
             "label": "Toggle SmartShift",
             "keys": [],               # handled by Engine, not key_simulator

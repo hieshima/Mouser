@@ -122,29 +122,65 @@ class Engine:
                     })
                 if action_id == "toggle_smart_shift":
                     self._toggle_smart_shift()
+                elif action_id == "switch_scroll_mode":
+                    self._switch_scroll_mode()
                 else:
                     execute_action(action_id)
         return handler
 
     def _toggle_smart_shift(self):
-        """Toggle SmartShift enabled state (physical button or mapped action)."""
+        """Toggle SmartShift auto-switching on/off.
+
+        IMPORTANT: this is called from a HID event callback which runs on the HID
+        loop thread.  Calling hg.set_smart_shift() directly would block waiting for
+        the same loop to process the pending request — a deadlock that causes the
+        3-second timeout seen in the logs.  Config and UI are updated synchronously;
+        the device write is dispatched to a separate thread.
+        """
         settings = self.cfg.get("settings", {})
         new_enabled = not settings.get("smart_shift_enabled", False)
         mode = settings.get("smart_shift_mode", "ratchet")
         threshold = settings.get("smart_shift_threshold", 25)
         print(f"[Engine] toggle_smart_shift → enabled={new_enabled}")
-        self.set_smart_shift(mode, new_enabled, threshold)
-        # Notify UI immediately so the toggle is reflected without waiting for the poll.
+        settings["smart_shift_enabled"] = new_enabled
+        save_config(self.cfg)
         if self._smart_shift_read_cb:
-            updated = self.cfg.get("settings", {})
             try:
-                self._smart_shift_read_cb({
-                    "mode": updated.get("smart_shift_mode", "ratchet"),
-                    "enabled": updated.get("smart_shift_enabled", False),
-                    "threshold": updated.get("smart_shift_threshold", 25),
-                })
+                self._smart_shift_read_cb({"mode": mode, "enabled": new_enabled, "threshold": threshold})
             except Exception:
                 pass
+        hg = self.hook._hid_gesture
+        if hg:
+            def _write():
+                ok = hg.set_smart_shift(mode, new_enabled, threshold)
+                print(f"[Engine] toggle_smart_shift device write -> {'OK' if ok else 'FAILED'}")
+            threading.Thread(target=_write, daemon=True, name="ToggleSmartShift").start()
+
+    def _switch_scroll_mode(self):
+        """Switch between ratchet and free-spin (Logi Options+ physical button behaviour).
+
+        SmartShift auto-switching is disabled so the chosen fixed mode takes effect.
+        Same deadlock caveat as _toggle_smart_shift — device write runs off-thread.
+        """
+        settings = self.cfg.get("settings", {})
+        current_mode = settings.get("smart_shift_mode", "ratchet")
+        new_mode = "freespin" if current_mode == "ratchet" else "ratchet"
+        threshold = settings.get("smart_shift_threshold", 25)
+        print(f"[Engine] switch_scroll_mode → {new_mode}")
+        settings["smart_shift_mode"] = new_mode
+        settings["smart_shift_enabled"] = False
+        save_config(self.cfg)
+        if self._smart_shift_read_cb:
+            try:
+                self._smart_shift_read_cb({"mode": new_mode, "enabled": False, "threshold": threshold})
+            except Exception:
+                pass
+        hg = self.hook._hid_gesture
+        if hg:
+            def _write():
+                ok = hg.set_smart_shift(new_mode, False, threshold)
+                print(f"[Engine] switch_scroll_mode device write -> {'OK' if ok else 'FAILED'}")
+            threading.Thread(target=_write, daemon=True, name="SwitchScrollMode").start()
 
     def _make_hscroll_handler(self, action_id):
         def handler(event):

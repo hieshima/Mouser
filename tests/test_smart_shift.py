@@ -470,7 +470,10 @@ class EngineToggleSmartShiftTests(unittest.TestCase):
         engine = self._make_engine({"smart_shift_enabled": False, "smart_shift_threshold": 30})
         hg = Mock(smart_shift_supported=True)
         engine.hook._hid_gesture = hg
-        with patch("core.engine.save_config"):
+        with (
+            patch("core.engine.save_config"),
+            patch("core.engine.threading.Thread", _ImmediateThread),
+        ):
             engine._toggle_smart_shift()
         hg.set_smart_shift.assert_called_once_with("ratchet", True, 30)
 
@@ -478,7 +481,10 @@ class EngineToggleSmartShiftTests(unittest.TestCase):
         engine = self._make_engine({"smart_shift_enabled": False, "smart_shift_threshold": 20})
         received = []
         engine.set_smart_shift_read_callback(received.append)
-        with patch("core.engine.save_config"):
+        with (
+            patch("core.engine.save_config"),
+            patch("core.engine.threading.Thread", _ImmediateThread),
+        ):
             engine._toggle_smart_shift()
         self.assertEqual(len(received), 1)
         self.assertTrue(received[0]["enabled"])
@@ -498,9 +504,85 @@ class EngineToggleSmartShiftTests(unittest.TestCase):
             handler(SimpleNamespace(event_type="xbutton1_down"))
         exec_mock.assert_called_once_with("alt_tab")
 
+    def test_make_handler_calls_switch_for_switch_action(self):
+        engine = self._make_engine()
+        switch_calls = []
+        engine._switch_scroll_mode = lambda: switch_calls.append(True)
+        handler = engine._make_handler("switch_scroll_mode")
+        handler(SimpleNamespace(event_type="mode_shift_down"))
+        self.assertEqual(len(switch_calls), 1)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Engine — _switch_scroll_mode (ratchet ↔ freespin, disables SmartShift auto)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class EngineSwitchScrollModeTests(unittest.TestCase):
+    def _make_engine(self, extra_settings=None):
+        from core.engine import Engine
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        if extra_settings:
+            cfg["settings"].update(extra_settings)
+        with (
+            patch("core.engine.MouseHook", _FakeMouseHook),
+            patch("core.engine.AppDetector", _FakeAppDetector),
+            patch("core.engine.load_config", return_value=cfg),
+        ):
+            return Engine()
+
+    def test_switch_ratchet_to_freespin(self):
+        engine = self._make_engine({"smart_shift_mode": "ratchet"})
+        with patch("core.engine.save_config"):
+            engine._switch_scroll_mode()
+        self.assertEqual(engine.cfg["settings"]["smart_shift_mode"], "freespin")
+
+    def test_switch_freespin_to_ratchet(self):
+        engine = self._make_engine({"smart_shift_mode": "freespin"})
+        with patch("core.engine.save_config"):
+            engine._switch_scroll_mode()
+        self.assertEqual(engine.cfg["settings"]["smart_shift_mode"], "ratchet")
+
+    def test_switch_disables_smart_shift_auto(self):
+        """Switching mode always disables SmartShift auto-switching."""
+        engine = self._make_engine({"smart_shift_mode": "ratchet", "smart_shift_enabled": True})
+        with patch("core.engine.save_config"):
+            engine._switch_scroll_mode()
+        self.assertFalse(engine.cfg["settings"]["smart_shift_enabled"])
+
+    def test_switch_calls_hid_gesture_when_connected(self):
+        engine = self._make_engine({"smart_shift_mode": "ratchet", "smart_shift_threshold": 25})
+        hg = Mock(smart_shift_supported=True)
+        engine.hook._hid_gesture = hg
+        with (
+            patch("core.engine.save_config"),
+            patch("core.engine.threading.Thread", _ImmediateThread),
+        ):
+            engine._switch_scroll_mode()
+        hg.set_smart_shift.assert_called_once_with("freespin", False, 25)
+
+    def test_switch_fires_ui_callback(self):
+        engine = self._make_engine({"smart_shift_mode": "ratchet", "smart_shift_threshold": 20})
+        received = []
+        engine.set_smart_shift_read_callback(received.append)
+        with (
+            patch("core.engine.save_config"),
+            patch("core.engine.threading.Thread", _ImmediateThread),
+        ):
+            engine._switch_scroll_mode()
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0]["mode"], "freespin")
+        self.assertFalse(received[0]["enabled"])
+
+    def test_switch_preserves_threshold(self):
+        engine = self._make_engine({"smart_shift_mode": "ratchet", "smart_shift_threshold": 42})
+        with patch("core.engine.save_config"):
+            engine._switch_scroll_mode()
+        self.assertEqual(engine.cfg["settings"]["smart_shift_threshold"], 42)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Config v7 migration — mode_shift "none" → "toggle_smart_shift"
+# (v7 runs as an intermediate step; v8 then upgrades toggle → switch)
 # ──────────────────────────────────────────────────────────────────────────────
 
 class ConfigV7MigrationTests(unittest.TestCase):
@@ -521,12 +603,13 @@ class ConfigV7MigrationTests(unittest.TestCase):
             "settings": {},
         }
 
-    def test_mode_shift_none_is_promoted_to_toggle_smart_shift(self):
+    def test_mode_shift_none_is_promoted_to_switch_scroll_mode(self):
+        # v6 "none" → v7 "toggle_smart_shift" → v8 "switch_scroll_mode"
         from core.config import _migrate
         migrated = _migrate(self._v6_config("none"))
         self.assertEqual(
             migrated["profiles"]["default"]["mappings"]["mode_shift"],
-            "toggle_smart_shift",
+            "switch_scroll_mode",
         )
 
     def test_explicit_non_none_mapping_is_preserved(self):
@@ -548,17 +631,79 @@ class ConfigV7MigrationTests(unittest.TestCase):
         migrated = _migrate(cfg)
         self.assertEqual(
             migrated["profiles"]["default"]["mappings"]["mode_shift"],
-            "toggle_smart_shift",
+            "switch_scroll_mode",
         )
         self.assertEqual(
             migrated["profiles"]["work"]["mappings"]["mode_shift"],
-            "toggle_smart_shift",
+            "switch_scroll_mode",
         )
 
-    def test_version_bumped_to_7(self):
+    def test_version_bumped_to_8(self):
         from core.config import _migrate
         migrated = _migrate(self._v6_config())
-        self.assertEqual(migrated["version"], 7)
+        self.assertEqual(migrated["version"], 8)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Config v8 migration — mode_shift "toggle_smart_shift" → "switch_scroll_mode"
+# ──────────────────────────────────────────────────────────────────────────────
+
+class ConfigV8MigrationTests(unittest.TestCase):
+    def _v7_config(self, mode_shift="toggle_smart_shift"):
+        return {
+            "version": 7,
+            "active_profile": "default",
+            "profiles": {
+                "default": {
+                    "label": "Default",
+                    "apps": [],
+                    "mappings": {
+                        "middle": "none",
+                        "mode_shift": mode_shift,
+                    },
+                }
+            },
+            "settings": {},
+        }
+
+    def test_toggle_smart_shift_upgraded_to_switch_scroll_mode(self):
+        from core.config import _migrate
+        migrated = _migrate(self._v7_config("toggle_smart_shift"))
+        self.assertEqual(
+            migrated["profiles"]["default"]["mappings"]["mode_shift"],
+            "switch_scroll_mode",
+        )
+
+    def test_explicit_non_toggle_mapping_is_preserved(self):
+        from core.config import _migrate
+        migrated = _migrate(self._v7_config("alt_tab"))
+        self.assertEqual(
+            migrated["profiles"]["default"]["mappings"]["mode_shift"],
+            "alt_tab",
+        )
+
+    def test_multiple_profiles_all_migrated(self):
+        from core.config import _migrate
+        cfg = self._v7_config("toggle_smart_shift")
+        cfg["profiles"]["work"] = {
+            "label": "Work",
+            "apps": ["Code"],
+            "mappings": {"mode_shift": "toggle_smart_shift"},
+        }
+        migrated = _migrate(cfg)
+        self.assertEqual(
+            migrated["profiles"]["default"]["mappings"]["mode_shift"],
+            "switch_scroll_mode",
+        )
+        self.assertEqual(
+            migrated["profiles"]["work"]["mappings"]["mode_shift"],
+            "switch_scroll_mode",
+        )
+
+    def test_version_bumped_to_8(self):
+        from core.config import _migrate
+        migrated = _migrate(self._v7_config())
+        self.assertEqual(migrated["version"], 8)
 
 
 if __name__ == "__main__":

@@ -31,7 +31,7 @@ class ConfigMigrationTests(unittest.TestCase):
 
         migrated = config._migrate(legacy)
 
-        self.assertEqual(migrated["version"], 7)
+        self.assertEqual(migrated["version"], 8)
         self.assertEqual(migrated["profiles"]["default"]["apps"], [])
         self.assertFalse(migrated["settings"]["invert_hscroll"])
         self.assertFalse(migrated["settings"]["invert_vscroll"])
@@ -52,11 +52,11 @@ class ConfigMigrationTests(unittest.TestCase):
             self.assertEqual(
                 migrated["profiles"]["default"]["mappings"][key], "none"
             )
-        # v7 migration promotes the physical SmartShift button from "none" to
-        # "toggle_smart_shift" so it works out of the box.
+        # v7→v8 migration promotes the physical SmartShift button from "none" to
+        # "switch_scroll_mode" (ratchet ↔ free-spin, matching Logi Options+ default).
         self.assertEqual(
             migrated["profiles"]["default"]["mappings"]["mode_shift"],
-            "toggle_smart_shift",
+            "switch_scroll_mode",
         )
 
     def test_migrate_updates_media_player_profile_apps(self):
@@ -73,7 +73,7 @@ class ConfigMigrationTests(unittest.TestCase):
 
         migrated = config._migrate(cfg)
 
-        self.assertEqual(migrated["version"], 7)
+        self.assertEqual(migrated["version"], 8)
         self.assertEqual(
             migrated["profiles"]["media"]["apps"],
             ["Microsoft.Media.Player.exe", "VLC.exe"],
@@ -112,7 +112,7 @@ class ConfigMigrationTests(unittest.TestCase):
             ):
                 loaded = config.load_config()
 
-        self.assertEqual(loaded["version"], 7)
+        self.assertEqual(loaded["version"], 8)
         self.assertEqual(loaded["settings"]["dpi"], 800)
         self.assertFalse(loaded["settings"]["start_at_login"])
         self.assertEqual(loaded["settings"]["gesture_threshold"], 50)
@@ -136,11 +136,11 @@ class ConfigMigrationTests(unittest.TestCase):
 
         migrated = config._migrate(legacy)
 
-        self.assertEqual(migrated["version"], 7)
+        self.assertEqual(migrated["version"], 8)
         self.assertTrue(migrated["settings"]["start_at_login"])
         self.assertEqual(
             migrated["profiles"]["default"]["mappings"]["mode_shift"],
-            "toggle_smart_shift",
+            "switch_scroll_mode",
         )
 
     def test_get_profile_for_app_matches_aliases(self):
