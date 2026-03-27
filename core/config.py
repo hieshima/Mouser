@@ -65,7 +65,7 @@ BUTTON_TO_EVENTS = {
 }
 
 DEFAULT_CONFIG = {
-    "version": 6,
+    "version": 7,
     "active_profile": "default",
     "profiles": {
         "default": {
@@ -82,7 +82,7 @@ DEFAULT_CONFIG = {
                 "xbutton2": "alt_tab",
                 "hscroll_left": "browser_back",
                 "hscroll_right": "browser_forward",
-                "mode_shift": "none",
+                "mode_shift": "toggle_smart_shift",
             },
         }
     },
@@ -297,6 +297,16 @@ def _migrate(cfg):
             mappings = pdata.setdefault("mappings", {})
             mappings.setdefault("mode_shift", "none")
         cfg["version"] = 6
+
+    if version < 7:
+        # v6 defaulted mode_shift to "none"; remap to "toggle_smart_shift" so the
+        # physical SmartShift button behind the scroll wheel works out of the box.
+        # Users who explicitly want no action can set it back to "none" in the UI.
+        for pdata in cfg.get("profiles", {}).values():
+            mappings = pdata.setdefault("mappings", {})
+            if mappings.get("mode_shift") == "none":
+                mappings["mode_shift"] = "toggle_smart_shift"
+        cfg["version"] = 7
 
     cfg.setdefault("settings", {})
     cfg["settings"].setdefault("appearance_mode", "system")

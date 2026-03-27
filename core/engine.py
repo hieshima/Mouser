@@ -120,8 +120,31 @@ class Engine:
                         "action_id": action_id,
                         "action_label": self._action_label(action_id),
                     })
-                execute_action(action_id)
+                if action_id == "toggle_smart_shift":
+                    self._toggle_smart_shift()
+                else:
+                    execute_action(action_id)
         return handler
+
+    def _toggle_smart_shift(self):
+        """Toggle SmartShift enabled state (physical button or mapped action)."""
+        settings = self.cfg.get("settings", {})
+        new_enabled = not settings.get("smart_shift_enabled", False)
+        mode = settings.get("smart_shift_mode", "ratchet")
+        threshold = settings.get("smart_shift_threshold", 25)
+        print(f"[Engine] toggle_smart_shift → enabled={new_enabled}")
+        self.set_smart_shift(mode, new_enabled, threshold)
+        # Notify UI immediately so the toggle is reflected without waiting for the poll.
+        if self._smart_shift_read_cb:
+            updated = self.cfg.get("settings", {})
+            try:
+                self._smart_shift_read_cb({
+                    "mode": updated.get("smart_shift_mode", "ratchet"),
+                    "enabled": updated.get("smart_shift_enabled", False),
+                    "threshold": updated.get("smart_shift_threshold", 25),
+                })
+            except Exception:
+                pass
 
     def _make_hscroll_handler(self, action_id):
         def handler(event):
