@@ -269,6 +269,8 @@ if sys.platform == "win32":
             self._gesture_cooldown_until = 0.0
             self._gesture_input_source = None
             self._connected_device = None
+            self._dispatch_queue = queue.Queue()
+            self._dispatch_worker_thread = None
 
         def register(self, event_type, callback):
             self._callbacks.setdefault(event_type, []).append(callback)
@@ -366,6 +368,18 @@ if sys.platform == "win32":
 
         def _hid_gesture_available(self):
             return self._hid_gesture is not None and self._device_connected
+
+        def _dispatch_worker(self):
+            """Background thread: drains the event queue so the hook callback returns fast."""
+            while self._running:
+                try:
+                    event = self._dispatch_queue.get(timeout=0.05)
+                except queue.Empty:
+                    continue
+                try:
+                    self._dispatch(event)
+                except Exception as e:
+                    print(f"[MouseHook] dispatch worker error: {e}")
 
         def _gesture_cooldown_active(self):
             return time.monotonic() < self._gesture_cooldown_until
@@ -615,7 +629,7 @@ if sys.platform == "win32":
                             self._emit_debug("Invert horizontal scroll skipped: raw input window unavailable")
 
                 if event:
-                    self._dispatch(event)
+                    self._dispatch_queue.put(event)
                     if should_block:
                         return 1
 
@@ -910,6 +924,10 @@ if sys.platform == "win32":
                 self._hid_gesture = listener
                 if not listener.start():
                     self._hid_gesture = None
+            # Start the dispatch worker — processes events off the hook thread
+            self._dispatch_worker_thread = threading.Thread(
+                target=self._dispatch_worker, daemon=True, name="HookDispatch")
+            self._dispatch_worker_thread.start()
             return True
 
         def stop(self):
@@ -918,6 +936,9 @@ if sys.platform == "win32":
                 self._hid_gesture.stop()
                 self._hid_gesture = None
             self._connected_device = None
+            if self._dispatch_worker_thread:
+                self._dispatch_worker_thread.join(timeout=1)
+                self._dispatch_worker_thread = None
             if self._thread_id:
                 PostThreadMessageW(self._thread_id, WM_QUIT, 0, 0)
             if self._hook_thread:
