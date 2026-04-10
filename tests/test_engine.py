@@ -296,7 +296,8 @@ class EngineReplayPhaseOneTests(unittest.TestCase):
         self.assertEqual(len(replay_threads), 1)
         replay_threads[0].run_target()
         engine.hook._hid_gesture.set_dpi.assert_called_once_with(expected_dpi)
-        engine.hook._hid_gesture.set_smart_shift.assert_called_once_with(
+        self.assertEqual(engine.hook._hid_gesture.set_smart_shift.call_count, 2)
+        engine.hook._hid_gesture.set_smart_shift.assert_called_with(
             expected_ss_mode, expected_ss_enabled, expected_ss_threshold
         )
 
@@ -319,13 +320,14 @@ class EngineReplayPhaseOneTests(unittest.TestCase):
         replay_threads[0].run_target()
 
         self.assertEqual(seen_dpi, [engine.cfg["settings"]["dpi"]])
+        self.assertGreaterEqual(len(seen_smart_shift), 2)
         self.assertEqual(
-            seen_smart_shift,
-            [{
+            seen_smart_shift[-1],
+            {
                 "mode": engine.cfg["settings"]["smart_shift_mode"],
                 "enabled": engine.cfg["settings"]["smart_shift_enabled"],
                 "threshold": engine.cfg["settings"]["smart_shift_threshold"],
-            }],
+            },
         )
 
     def test_evdev_only_connected_true_does_not_request_replay_worker(self):
@@ -409,7 +411,7 @@ class EngineReplayPhaseOneTests(unittest.TestCase):
         replay_threads[0].run_target()
 
         self.assertEqual(engine.hook._hid_gesture.set_dpi.call_count, 1)
-        self.assertEqual(engine.hook._hid_gesture.set_smart_shift.call_count, 1)
+        self.assertEqual(engine.hook._hid_gesture.set_smart_shift.call_count, 2)
 
         startup_threads[0].run_target()
 
@@ -418,7 +420,8 @@ class EngineReplayPhaseOneTests(unittest.TestCase):
         expected_ss_enabled = engine.cfg["settings"]["smart_shift_enabled"]
         expected_ss_threshold = engine.cfg["settings"]["smart_shift_threshold"]
         engine.hook._hid_gesture.set_dpi.assert_called_once_with(expected_dpi)
-        engine.hook._hid_gesture.set_smart_shift.assert_called_once_with(
+        self.assertEqual(engine.hook._hid_gesture.set_smart_shift.call_count, 2)
+        engine.hook._hid_gesture.set_smart_shift.assert_called_with(
             expected_ss_mode, expected_ss_enabled, expected_ss_threshold
         )
 

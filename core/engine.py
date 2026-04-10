@@ -456,6 +456,14 @@ class Engine:
         summary = ", ".join(f"{key}={mappings.get(key, 'none')}" for key in interesting)
         self._emit_debug(f"{prefix}: {summary}")
 
+    def _saved_smart_shift_state(self):
+        settings = self.cfg.get("settings", {})
+        return {
+            "mode": settings.get("smart_shift_mode", "ratchet"),
+            "enabled": settings.get("smart_shift_enabled", False),
+            "threshold": settings.get("smart_shift_threshold", 25),
+        }
+
     def _run_saved_settings_replay(self):
         hg = self.hook._hid_gesture
         if hg is None:
@@ -468,9 +476,10 @@ class Engine:
         retry_smart_shift = False
         saved_dpi = self.cfg.get("settings", {}).get("dpi")
 
-        saved_ss = self.cfg.get("settings", {}).get("smart_shift_mode")
-        ss_enabled = self.cfg.get("settings", {}).get("smart_shift_enabled", False)
-        ss_threshold = self.cfg.get("settings", {}).get("smart_shift_threshold", 25)
+        saved_ss_state = self._saved_smart_shift_state()
+        saved_ss = saved_ss_state["mode"]
+        ss_enabled = saved_ss_state["enabled"]
+        ss_threshold = saved_ss_state["threshold"]
 
         # Phase A: apply Smart Shift immediately so the physical wheel mode
         # converges before the settled replay.
@@ -482,7 +491,7 @@ class Engine:
                     replay_ok = False
                 if self._smart_shift_read_cb:
                     try:
-                        self._smart_shift_read_cb(saved_ss)
+                        self._smart_shift_read_cb(saved_ss_state)
                     except Exception:
                         pass
 
@@ -510,7 +519,7 @@ class Engine:
             elif hg.set_smart_shift(saved_ss, ss_enabled, ss_threshold):
                 if self._smart_shift_read_cb:
                     try:
-                        self._smart_shift_read_cb(saved_ss)
+                        self._smart_shift_read_cb(saved_ss_state)
                     except Exception:
                         pass
             else:
@@ -537,7 +546,7 @@ class Engine:
                     replay_ok = False
                 elif self._smart_shift_read_cb:
                     try:
-                        self._smart_shift_read_cb(saved_ss)
+                        self._smart_shift_read_cb(saved_ss_state)
                     except Exception:
                         pass
 
@@ -755,7 +764,7 @@ class Engine:
         self._dpi_read_cb = cb
 
     def set_smart_shift_read_callback(self, cb):
-        """Register a callback ``cb(mode)`` invoked when Smart Shift is read."""
+        """Register a callback ``cb(state)`` invoked when Smart Shift is read."""
         self._smart_shift_read_cb = cb
 
     def stop(self):
