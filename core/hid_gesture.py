@@ -601,6 +601,9 @@ class HidGestureListener:
         self._smart_shift_enhanced = False  # True → use fn 1/2; False → fn 0/1
         self._pending_smart_shift = None
         self._smart_shift_result = None
+        self._smart_shift_call_lock = threading.Lock()
+        self._smart_shift_slot_lock = threading.Lock()
+        self._smart_shift_event = threading.Event()
         self._reconnect_requested = False
         self._pending_battery = None
         self._battery_result = None
@@ -1112,23 +1115,31 @@ class HidGestureListener:
         smart_shift_enabled: True to enable auto SmartShift (auto-switching)
         threshold: 1-50 sensitivity when SmartShift is enabled
         Can be called from any thread.  Returns True on success."""
-        self._smart_shift_result = None
-        self._pending_smart_shift = (mode, smart_shift_enabled, threshold)
-        for _ in range(30):
-            if self._pending_smart_shift is None:
+        pending = (mode, smart_shift_enabled, threshold)
+        with self._smart_shift_call_lock:
+            with self._smart_shift_slot_lock:
+                self._smart_shift_result = None
+                self._pending_smart_shift = pending
+                self._smart_shift_event.clear()
+            if not self._smart_shift_event.wait(3):
+                with self._smart_shift_slot_lock:
+                    if self._pending_smart_shift == pending:
+                        self._smart_shift_result = False
+                        self._pending_smart_shift = None
+                        self._smart_shift_event.set()
+                print("[HidGesture] Smart Shift set timed out")
+                return False
+            with self._smart_shift_slot_lock:
                 return self._smart_shift_result is True
-            time.sleep(0.1)
-        print("[HidGesture] Smart Shift set timed out")
-        return False
 
     def _apply_pending_smart_shift(self):
-        pending = self._pending_smart_shift
+        with self._smart_shift_slot_lock:
+            pending = self._pending_smart_shift
         if pending is None:
             return
         if self._smart_shift_idx is None or self._dev is None:
             print("[HidGesture] Cannot set Smart Shift — not connected")
-            self._smart_shift_result = None if pending == "read" else False
-            self._pending_smart_shift = None
+            self._finish_pending_smart_shift(None if pending == "read" else False)
             return
         if pending == "read":
             self._apply_pending_read_smart_shift()
@@ -1158,11 +1169,11 @@ class HidGestureListener:
             label = "fixed ratchet (SmartShift disabled)"
         if resp:
             print(f"[HidGesture] Smart Shift set to {label}")
-            self._smart_shift_result = True
+            result = True
         else:
             print("[HidGesture] Smart Shift set FAILED")
-            self._smart_shift_result = False
-        self._pending_smart_shift = None
+            result = False
+        self._finish_pending_smart_shift(result)
 
     def force_reconnect(self):
         """Request the listener thread to drop and re-establish the HID++ connection.
@@ -1176,20 +1187,41 @@ class HidGestureListener:
     def read_smart_shift(self):
         """Queue a Smart Shift read.
         Returns dict {'mode': str, 'enabled': bool, 'threshold': int} or None."""
-        self._smart_shift_result = None
-        self._pending_smart_shift = "read"
-        for _ in range(30):
-            if self._pending_smart_shift is None:
+        with self._smart_shift_call_lock:
+            with self._smart_shift_slot_lock:
+                self._smart_shift_result = None
+                self._pending_smart_shift = "read"
+                self._smart_shift_event.clear()
+            if not self._smart_shift_event.wait(3):
+                with self._smart_shift_slot_lock:
+                    if self._pending_smart_shift == "read":
+                        self._smart_shift_result = None
+                        self._pending_smart_shift = None
+                        self._smart_shift_event.set()
+                print("[HidGesture] Smart Shift read timed out")
+                return None
+            with self._smart_shift_slot_lock:
                 return self._smart_shift_result
-            time.sleep(0.1)
-        print("[HidGesture] Smart Shift read timed out")
-        self._pending_smart_shift = None   # prevent stale processing
-        return None
+
+    def _finish_pending_smart_shift(self, result):
+        with self._smart_shift_slot_lock:
+            self._smart_shift_result = result
+            self._pending_smart_shift = None
+            self._smart_shift_event.set()
+
+    def _abort_pending_smart_shift(self):
+        with self._smart_shift_slot_lock:
+            pending = self._pending_smart_shift
+            if pending is None:
+                self._smart_shift_result = None
+                return
+            self._smart_shift_result = None if pending == "read" else False
+            self._pending_smart_shift = None
+            self._smart_shift_event.set()
 
     def _apply_pending_read_smart_shift(self):
         if self._smart_shift_idx is None or self._dev is None:
-            self._smart_shift_result = None
-            self._pending_smart_shift = None
+            self._finish_pending_smart_shift(None)
             return
         # enhanced (0x2111): read fn=1; basic (0x2110): read fn=0
         read_fn = 1 if self._smart_shift_enhanced else 0
@@ -1212,11 +1244,10 @@ class HidGestureListener:
             else:
                 result = {"mode": "ratchet", "enabled": False, "threshold": 25}
             print(f"[HidGesture] Smart Shift state = {result}")
-            self._smart_shift_result = result
+            self._finish_pending_smart_shift(result)
         else:
             print("[HidGesture] Smart Shift read FAILED")
-            self._smart_shift_result = None
-        self._pending_smart_shift = None
+            self._finish_pending_smart_shift(None)
 
     def read_battery(self):
         """Queue a battery read and wait for the listener thread result."""
@@ -1639,7 +1670,8 @@ class HidGestureListener:
             self._battery_feature_id = None
             self._pending_battery = None
             self._pending_dpi = None
-            self._pending_smart_shift = None
+            self._dpi_result = None
+            self._abort_pending_smart_shift()
             self._last_logged_battery = None
             self._consecutive_request_timeouts = 0
             if self._held:

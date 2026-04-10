@@ -451,6 +451,24 @@ class EngineReplayPhaseOneTests(unittest.TestCase):
             status_messages,
         )
 
+    def test_battery_poll_skips_smart_shift_reads_while_replay_is_inflight(self):
+        engine = self._make_engine()
+        stop_event = Mock()
+        stop_event.is_set.return_value = False
+        stop_event.wait.return_value = True
+        engine._replay_inflight = True
+        engine.hook._hid_gesture = SimpleNamespace(
+            connected_device=SimpleNamespace(name="MX Master 3S"),
+            smart_shift_supported=True,
+            read_battery=Mock(return_value=None),
+            read_smart_shift=Mock(return_value={"mode": "ratchet", "enabled": False, "threshold": 25}),
+        )
+
+        engine._battery_poll_loop(stop_event)
+
+        engine.hook._hid_gesture.read_battery.assert_called_once_with()
+        engine.hook._hid_gesture.read_smart_shift.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -628,7 +628,11 @@ class Engine:
                         except Exception:
                             pass
 
-                if now - _last_ss >= _ss_poll_interval and hg.smart_shift_supported:
+                if (
+                    not self._replay_inflight
+                    and now - _last_ss >= _ss_poll_interval
+                    and hg.smart_shift_supported
+                ):
                     _last_ss = now
                     ss_mode = hg.read_smart_shift()
                     if stop_event.is_set():

@@ -1,6 +1,8 @@
 """Tests for SmartShift (HID++ 0x2110/0x2111) across hid_gesture, engine, and backend."""
 
 import copy
+import threading
+import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -190,6 +192,52 @@ class SmartShiftReadTests(unittest.TestCase):
         listener._request = Mock(return_value=None)
         listener._apply_pending_read_smart_shift()
         self.assertIsNone(listener._smart_shift_result)
+
+
+class SmartShiftPendingRequestAbortTests(unittest.TestCase):
+    def test_read_abort_returns_none_instead_of_stale_result(self):
+        listener = hid_gesture.HidGestureListener()
+        listener._smart_shift_result = {"mode": "ratchet", "enabled": True, "threshold": 30}
+        seen = []
+        done = threading.Event()
+
+        def worker():
+            seen.append(listener.read_smart_shift())
+            done.set()
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        for _ in range(50):
+            if listener._pending_smart_shift == "read":
+                break
+            time.sleep(0.01)
+        listener._abort_pending_smart_shift()
+        done.wait(1)
+        thread.join(timeout=1)
+
+        self.assertEqual(seen, [None])
+
+    def test_write_abort_returns_false_instead_of_stale_success(self):
+        listener = hid_gesture.HidGestureListener()
+        listener._smart_shift_result = True
+        seen = []
+        done = threading.Event()
+
+        def worker():
+            seen.append(listener.set_smart_shift("ratchet", False, 25))
+            done.set()
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        for _ in range(50):
+            if listener._pending_smart_shift == ("ratchet", False, 25):
+                break
+            time.sleep(0.01)
+        listener._abort_pending_smart_shift()
+        done.wait(1)
+        thread.join(timeout=1)
+
+        self.assertEqual(seen, [False])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
