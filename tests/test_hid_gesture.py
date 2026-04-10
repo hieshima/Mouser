@@ -201,5 +201,24 @@ class HidDiscoveryDiagnosticsTests(unittest.TestCase):
         self.assertFalse(listener._extra_diverts[0x00C4]["held"])
 
 
+class HidReconnectInvariantTests(unittest.TestCase):
+    def test_force_release_stale_holds_clears_gesture_and_extra_buttons(self):
+        gesture_up = Mock()
+        extra_up = Mock()
+        listener = hid_gesture.HidGestureListener(
+            on_up=gesture_up,
+            extra_diverts={0x00C4: {"on_up": extra_up}},
+        )
+        listener._held = True
+        listener._extra_diverts[0x00C4]["held"] = True
+
+        listener._force_release_stale_holds()
+
+        self.assertFalse(listener._held)
+        self.assertFalse(listener._extra_diverts[0x00C4]["held"])
+        gesture_up.assert_called_once_with()
+        extra_up.assert_called_once_with()
+
+
 if __name__ == "__main__":
     unittest.main()

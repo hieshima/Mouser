@@ -384,6 +384,22 @@ class EngineReplayPhaseOneTests(unittest.TestCase):
 
         self.assertEqual(len(self._non_battery_threads(threads)), 2)
 
+    def test_hid_disconnect_updates_last_hid_ready_without_connection_edge(self):
+        engine = self._make_engine()
+        engine.hook.connected_device = SimpleNamespace(name="MX Master 3S", source="evdev")
+        engine.hook._hid_gesture = self._make_hid(
+            connected_device=SimpleNamespace(name="MX Master 3S")
+        )
+
+        with patch("core.engine.threading.Thread", side_effect=self._thread_factory([])):
+            engine._on_connection_change(True)
+        self.assertTrue(engine._last_hid_features_ready)
+
+        engine.hook._hid_gesture.connected_device = None
+        engine._on_connection_change(True)
+
+        self.assertFalse(engine._last_hid_features_ready)
+
     def test_startup_fallback_does_not_queue_replay_after_hid_ready_replay_requested(self):
         engine = self._make_engine()
         engine.hook._hid_gesture = self._make_hid(connected_device=None)
