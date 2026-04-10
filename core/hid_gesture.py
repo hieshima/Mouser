@@ -767,6 +767,11 @@ class HidGestureListener:
         except Exception as exc:
             print(f"[HidGesture] request tx failed feat=0x{feat:02X} func=0x{func:X} "
                   f"params=[{_hex_bytes(req_params)}]: {exc}")
+            # Discovery probes should skip bad candidates, but an active session
+            # transport failure means the live handle has died and the main loop
+            # must run its existing cleanup/reconnect path.
+            if self._connected:
+                raise IOError(str(exc)) from exc
             return None
         deadline = time.time() + timeout_ms / 1000
         while time.time() < deadline:
@@ -775,6 +780,8 @@ class HidGestureListener:
             except Exception as exc:
                 print(f"[HidGesture] request rx failed feat=0x{feat:02X} func=0x{func:X} "
                       f"params=[{_hex_bytes(req_params)}]: {exc}")
+                if self._connected:
+                    raise IOError(str(exc)) from exc
                 return None
             if raw is None:
                 continue

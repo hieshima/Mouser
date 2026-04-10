@@ -201,6 +201,53 @@ class HidDiscoveryDiagnosticsTests(unittest.TestCase):
         self.assertFalse(listener._extra_diverts[0x00C4]["held"])
 
 
+class HidRequestTransportFailureTests(unittest.TestCase):
+    def test_request_raises_ioerror_on_tx_failure_during_active_session(self):
+        listener = hid_gesture.HidGestureListener()
+        listener._connected = True
+
+        with patch.object(listener, "_tx", side_effect=OSError("tx boom")):
+            with self.assertRaises(IOError):
+                listener._request(0x0E, 0, [])
+
+    def test_request_raises_ioerror_on_rx_failure_during_active_session(self):
+        listener = hid_gesture.HidGestureListener()
+        listener._connected = True
+
+        with (
+            patch.object(listener, "_tx"),
+            patch.object(listener, "_rx", side_effect=OSError("rx boom")),
+        ):
+            with self.assertRaises(IOError):
+                listener._request(0x0E, 0, [])
+
+    def test_request_returns_none_on_tx_failure_during_discovery(self):
+        listener = hid_gesture.HidGestureListener()
+
+        with patch.object(listener, "_tx", side_effect=OSError("tx boom")):
+            self.assertIsNone(listener._request(0x0E, 0, []))
+
+    def test_request_returns_none_on_rx_failure_during_discovery(self):
+        listener = hid_gesture.HidGestureListener()
+
+        with (
+            patch.object(listener, "_tx"),
+            patch.object(listener, "_rx", side_effect=OSError("rx boom")),
+        ):
+            self.assertIsNone(listener._request(0x0E, 0, []))
+
+    def test_request_timeout_still_increments_timeout_counter(self):
+        listener = hid_gesture.HidGestureListener()
+
+        with (
+            patch.object(listener, "_tx"),
+            patch.object(listener, "_rx", return_value=None),
+        ):
+            self.assertIsNone(listener._request(0x0E, 0, [], timeout_ms=0))
+
+        self.assertEqual(listener._consecutive_request_timeouts, 1)
+
+
 class HidReconnectInvariantTests(unittest.TestCase):
     def test_force_release_stale_holds_clears_gesture_and_extra_buttons(self):
         gesture_up = Mock()
