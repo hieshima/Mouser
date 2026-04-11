@@ -44,9 +44,35 @@ class _CapturingListener:
         self.stopped = True
 
 
+class _FakeLinuxEcodes:
+    EV_REL = 0x02
+    EV_KEY = 0x01
+    REL_X = 0x00
+    REL_Y = 0x01
+    BTN_LEFT = 0x110
+    BTN_RIGHT = 0x111
+    BTN_MIDDLE = 0x112
+    BTN_SIDE = 0x113
+    BTN_EXTRA = 0x114
+
+
+class _FakeLinuxUInput:
+    @staticmethod
+    def from_device(*_args, **_kwargs):
+        return Mock()
+
+
 class LinuxMouseHookReconnectTests(unittest.TestCase):
     def _reload_for_linux(self):
-        with patch.object(sys, "platform", "linux"):
+        fake_evdev = SimpleNamespace(
+            ecodes=_FakeLinuxEcodes,
+            UInput=_FakeLinuxUInput,
+            InputDevice=Mock(name="InputDevice"),
+        )
+        with (
+            patch.object(sys, "platform", "linux"),
+            patch.dict(sys.modules, {"evdev": fake_evdev}),
+        ):
             importlib.reload(mouse_hook)
         self.addCleanup(importlib.reload, mouse_hook)
         return mouse_hook
