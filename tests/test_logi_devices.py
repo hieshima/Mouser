@@ -26,6 +26,13 @@ class LogiDeviceRegistryTests(unittest.TestCase):
         self.assertIsNotNone(device)
         self.assertEqual(device.key, "mx_master_4")
 
+    def test_resolve_mx_master_4_business_pid_to_same_layout(self):
+        device = resolve_device(product_id=0xB048)
+
+        self.assertIsNotNone(device)
+        self.assertEqual(device.key, "mx_master_4")
+        self.assertEqual(device.ui_layout, "mx_master_4")
+
     def test_resolve_device_by_product_id(self):
         device = resolve_device(product_id=0xB034)
 
@@ -41,12 +48,24 @@ class LogiDeviceRegistryTests(unittest.TestCase):
         self.assertEqual(device.ui_layout, "mx_anywhere_3s")
         self.assertEqual(device.image_asset, "mouse_mx_anywhere_3s.png")
 
+    def test_resolve_mx_master_3s_business_pid(self):
+        device = resolve_device(product_id=0xB043)
+
+        self.assertIsNotNone(device)
+        self.assertEqual(device.key, "mx_master_3s")
+
     def test_resolve_device_by_alias(self):
         device = resolve_device(product_name="MX Master 3 for Mac")
 
         self.assertIsNotNone(device)
         self.assertEqual(device.key, "mx_master_3")
         self.assertIn(0xB023, device.product_ids)
+
+    def test_resolve_mx_master_3_business_pid(self):
+        device = resolve_device(product_id=0xB028)
+
+        self.assertIsNotNone(device)
+        self.assertEqual(device.key, "mx_master_3")
 
     def test_build_connected_device_info_uses_registry_defaults(self):
         info = build_connected_device_info(
@@ -83,6 +102,7 @@ class LogiDeviceRegistryTests(unittest.TestCase):
         self.assertEqual(info.key, "mystery_logitech_mouse")
         self.assertEqual(info.gesture_cids, (0x00F1,))
         self.assertEqual(info.ui_layout, "mx_master_3s")
+        self.assertEqual(info.image_asset, "logitech-mice/mx_master_3s/mouse.png")
 
     def test_known_device_layout_metadata_is_valid(self):
         for device in iter_known_devices():
