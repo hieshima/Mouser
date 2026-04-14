@@ -178,14 +178,16 @@ def should_keep(path):
         return True
 
     plugin_marker = "/plugins/"
-    if plugin_marker in lower:
-        plugin_path = normalized.split(plugin_marker, 1)[1]
+    plugin_index = lower.find(plugin_marker)
+    if plugin_index != -1:
+        plugin_path = normalized[plugin_index + len(plugin_marker) :]
         plugin_dir = plugin_path.split("/", 1)[0]
         return plugin_dir in KEEP_PLUGIN_DIRS and base != "libqpdf.so"
 
     qml_marker = "/qml/"
-    if qml_marker in lower:
-        qml_path = normalized.split(qml_marker, 1)[1]
+    qml_index = lower.find(qml_marker)
+    if qml_index != -1:
+        qml_path = normalized[qml_index + len(qml_marker) :]
         parts = [part for part in qml_path.split("/") if part]
         if not parts:
             return True
