@@ -40,6 +40,28 @@ class DeviceLayoutTests(unittest.TestCase):
         self.assertEqual(layout["image_asset"], "mx_vertical.png")
         self.assertGreater(len(layout["hotspots"]), 0)
 
+    def test_exact_mx_master_3s_layout_uses_catalog_asset(self):
+        layout = get_device_layout("mx_master_3s")
+
+        self.assertTrue(layout["interactive"])
+        self.assertEqual(layout["key"], "mx_master_3s")
+        self.assertEqual(
+            layout["image_asset"],
+            "logitech-mice/mx_master_3s/mouse.png",
+        )
+        self.assertGreater(len(layout["hotspots"]), 0)
+
+    def test_exact_mx_master_4_layout_uses_catalog_asset(self):
+        layout = get_device_layout("mx_master_4")
+
+        self.assertTrue(layout["interactive"])
+        self.assertEqual(layout["key"], "mx_master_4")
+        self.assertEqual(
+            layout["image_asset"],
+            "logitech-mice/mx_master_4/mouse.png",
+        )
+        self.assertGreater(len(layout["hotspots"]), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

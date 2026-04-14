@@ -336,6 +336,7 @@ Mouser 在统一的 `MouseHook` 抽象后面，为不同平台提供原生实现
 
 ### 设备目录与布局注册
 
+- `core/logi_device_catalog.py` holds Mouser's community-maintained per-device Logitech catalog, including model images and hotspot coordinates
 - `core/logi_devices.py` resolves known product IDs and model aliases into a `ConnectedDeviceInfo` record with display name, DPI range, preferred gesture CIDs, and default UI layout key
 - `core/device_layouts.py` stores image assets, hotspot coordinates, layout notes, and whether a layout is interactive or only a generic fallback
 - `ui/backend.py` combines auto-detected device info with any persisted per-device layout override and exposes the effective layout to QML
@@ -397,6 +398,7 @@ mouser/
 │   ├── engine.py            # Core engine — wires hook ↔ simulator ↔ config
 │   ├── mouse_hook.py        # Low-level mouse hook + HID++ gesture listener
 │   ├── hid_gesture.py       # HID++ 2.0 gesture button divert (Bluetooth)
+│   ├── logi_device_catalog.py   # Community-maintained per-device Logitech catalog + hotspots
 │   ├── logi_devices.py      # Known Logitech device catalog + connected-device metadata
 │   ├── device_layouts.py    # Device-family layout registry for QML overlays
 │   ├── key_simulator.py     # Platform-specific action simulator

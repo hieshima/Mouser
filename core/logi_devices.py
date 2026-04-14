@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
+from core.logi_device_catalog import LOGI_DEVICE_SPECS
+
 
 DEFAULT_GESTURE_CIDS = (0x00C3, 0x00D7)
 DEFAULT_DPI_MIN = 200
@@ -106,51 +108,11 @@ class ConnectedDeviceInfo:
     dpi_max: int = DEFAULT_DPI_MAX
 
 
-# Seeded from Mouser's existing support plus upstream identifiers seen in
-# Solaar/logiops for the major MX-family mice we want to grow into first.
-KNOWN_LOGI_DEVICES = (
-    LogiDeviceSpec(
-        key="mx_master_4",
-        display_name="MX Master 4",
-        product_ids=(0xB042,),
-        aliases=(
-            "Logitech MX Master 4",
-            "MX Master 4 for Mac",
-            "MX_Master_4",
-            "MX Master 4 for Business",
-        ),
-        ui_layout="mx_master_4",
-    ),
-    LogiDeviceSpec(
-        key="mx_master_3s",
-        display_name="MX Master 3S",
-        product_ids=(0xB034,),
-        aliases=("Logitech MX Master 3S", "MX Master 3S for Mac"),
-        ui_layout="mx_master_3s",
-    ),
-    LogiDeviceSpec(
-        key="mx_master_3",
-        display_name="MX Master 3",
-        product_ids=(0xB023,),
-        aliases=("Wireless Mouse MX Master 3", "MX Master 3 for Mac", "MX Master 3 Mac"),
-        ui_layout="mx_master_3",
-    ),
-    LogiDeviceSpec(
-        key="mx_master_2s",
-        display_name="MX Master 2S",
-        product_ids=(0xB019,),
-        aliases=("Wireless Mouse MX Master 2S",),
-        ui_layout="mx_master_2s",
-        dpi_max=4000,
-    ),
-    LogiDeviceSpec(
-        key="mx_master",
-        display_name="MX Master",
-        product_ids=(0xB012,),
-        aliases=("Wireless Mouse MX Master",),
-        ui_layout="mx_master",
-        dpi_max=4000,
-    ),
+# Seeded from Mouser's own device catalog first, then extended with broader
+# family support for devices that still use a shared layout.
+KNOWN_LOGI_DEVICES = tuple(
+    LogiDeviceSpec(**spec) for spec in LOGI_DEVICE_SPECS
+) + (
     LogiDeviceSpec(
         key="mx_vertical",
         display_name="MX Vertical",
@@ -278,7 +240,7 @@ def build_connected_device_info(
         transport=transport,
         source=source,
         ui_layout="mx_master_3s",
-        image_asset="mouse.png",
+        image_asset="logitech-mice/mx_master_3s/mouse.png",
         supported_buttons=MX_MASTER_BUTTONS,
         gesture_cids=tuple(gesture_cids or DEFAULT_GESTURE_CIDS),
     )
