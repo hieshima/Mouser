@@ -9,7 +9,6 @@ Output: dist/Mouser/  (directory with Mouser executable + dependencies)
 """
 
 import os
-import shutil
 
 ROOT = os.path.abspath(".")
 
@@ -100,93 +99,110 @@ a = Analysis(
     noarchive=False,
 )
 
-# Filter Qt shared libs and optional QML/plugin families that PyInstaller hooks
-# often pull in even though Mouser never loads them.
-UNWANTED_PATTERNS = [
-    "QtWebEngine",
-    "QtWebChannel",
-    "QtWebSockets",
-    "Qt3D",
-    "QtMultimedia",
-    "QtMultimediaWidgets",
-    "QtBluetooth",
-    "QtLocation",
-    "QtPositioning",
-    "QtSensors",
-    "QtSerialPort",
-    "QtPdf",
-    "QtCharts",
-    "QtDataVisualization",
-    "QtRemoteObjects",
-    "QtTextToSpeech",
-    "QtQuick3D",
-    "QtVirtualKeyboard",
-    "QtGraphs",
-    "Qt5Compat",
-    "QtWebView",
-    "QtTest",
-    "QtLabsAnimation",
-    "QtLabsFolderListModel",
-    "QtLabsPlatform",
-    "QtLabsQmlModels",
-    "QtLabsSettings",
-    "QtLabsSharedImage",
-    "QtLabsWavefrontMesh",
-    "QtQuickTest",
-    "QtScxml",
-    "QtScxmlQml",
-    "QtSpatialAudio",
-    "QtSql",
-]
+# Keep only the Qt runtime pieces Mouser actually uses. The negative-match
+# approach still let large transitive Qt payload through on Linux.
+QT_KEEP = {
+    "Qt6Core",
+    "Qt6Gui",
+    "Qt6Widgets",
+    "Qt6Network",
+    "Qt6OpenGL",
+    "Qt6Qml",
+    "Qt6QmlCore",
+    "Qt6QmlMeta",
+    "Qt6QmlModels",
+    "Qt6QmlNetwork",
+    "Qt6QmlWorkerScript",
+    "Qt6Quick",
+    "Qt6QuickControls2",
+    "Qt6QuickControls2Impl",
+    "Qt6QuickControls2Basic",
+    "Qt6QuickControls2BasicStyleImpl",
+    "Qt6QuickControls2Material",
+    "Qt6QuickControls2MaterialStyleImpl",
+    "Qt6QuickTemplates2",
+    "Qt6QuickLayouts",
+    "Qt6QuickEffects",
+    "Qt6QuickShapes",
+    "Qt6ShaderTools",
+    "Qt6Svg",
+    "pyside6",
+    "pyside6qml",
+    "shiboken6",
+}
 
-# Keep the Material + Basic control stacks and drop the unused optional styles.
-UNUSED_QUICK_CONTROLS_PATTERNS = [
-    "QtQuickControls2Fusion",
-    "QtQuickControls2FusionStyleImpl",
-    "QtQuickControls2Imagine",
-    "QtQuickControls2ImagineStyleImpl",
-    "QtQuickControls2Universal",
-    "QtQuickControls2UniversalStyleImpl",
-    "QtQuickControls2FluentWinUI3StyleImpl",
-    "QtQuickControls2IOSStyleImpl",
-    "QtQuickControls2MacOSStyleImpl",
-]
+KEEP_PLUGIN_DIRS = {
+    "platforms",
+    "imageformats",
+    "styles",
+    "iconengines",
+    "platforminputcontexts",
+    "xcbglintegrations",
+    "platformthemes",
+    "tls",
+    "egldeviceintegrations",
+    "networkinformation",
+    "generic",
+    "wayland-decoration-client",
+    "wayland-graphics-integration-client",
+    "wayland-shell-integration",
+}
 
-UNUSED_QUICK_CONTROLS_QML_DIRS = [
-    "/qtquick/controls/fusion/",
-    "/qtquick/controls/fluentwinui3/",
-    "/qtquick/controls/imagine/",
-    "/qtquick/controls/universal/",
-    "/qtquick/controls/ios/",
-    "/qtquick/controls/macos/",
-]
+KEEP_QML_TOP = {"QtCore", "QtQml", "QtQuick", "QtNetwork"}
+KEEP_QTQUICK = {"Controls", "Layouts", "Templates", "Window"}
 
 
-def is_unwanted(path_or_toc_entry):
-    src = ""
-    if isinstance(path_or_toc_entry, (list, tuple)) and len(path_or_toc_entry) >= 1:
-        src = path_or_toc_entry[0] or ""
-    elif isinstance(path_or_toc_entry, str):
-        src = path_or_toc_entry
-    src_lower = src.lower()
-    for pat in UNWANTED_PATTERNS:
-        if pat.lower() in src_lower:
+def normalized_stem(path):
+    base = os.path.basename(path)
+    if ".so" in base:
+        return base.split(".so", 1)[0].removeprefix("lib")
+    stem = os.path.splitext(base)[0]
+    if stem.endswith(".abi3"):
+        stem = stem[:-5]
+    return stem
+
+
+def should_keep(path):
+    normalized = path.replace("\\", "/")
+    lower = normalized.lower()
+
+    if "PySide6" not in normalized and "pyside6" not in lower:
+        return True
+
+    stem = normalized_stem(normalized)
+    if stem in QT_KEEP:
+        return True
+
+    base = os.path.basename(normalized)
+    if base.endswith(".abi3.so"):
+        return True
+
+    plugin_marker = "/plugins/"
+    if plugin_marker in lower:
+        plugin_path = normalized.split(plugin_marker, 1)[1]
+        plugin_dir = plugin_path.split("/", 1)[0]
+        return plugin_dir in KEEP_PLUGIN_DIRS and base != "libqpdf.so"
+
+    qml_marker = "/qml/"
+    if qml_marker in lower:
+        qml_path = normalized.split(qml_marker, 1)[1]
+        parts = [part for part in qml_path.split("/") if part]
+        if not parts:
             return True
-    for pat in UNUSED_QUICK_CONTROLS_PATTERNS:
-        if pat.lower() in src_lower:
-            return True
-    for qml_dir in UNUSED_QUICK_CONTROLS_QML_DIRS:
-        if qml_dir in src_lower:
-            return True
-    if "/plugins/" in src_lower:
-        for pat in ("webengine", "multimedia", "printsupport", "qmltooling", "sensorgestures"):
-            if pat in src_lower:
-                return True
+        if parts[0] not in KEEP_QML_TOP:
+            return False
+        if parts[0] == "QtQuick" and len(parts) > 1 and parts[1] not in KEEP_QTQUICK:
+            return False
+        style_parts = {part.lower() for part in parts}
+        if style_parts & {"fusion", "imagine", "universal", "fluentwinui3", "ios", "macos"}:
+            return False
+        return True
+
     return False
 
 
-a.binaries = [b for b in a.binaries if not is_unwanted(b)]
-a.datas = [d for d in a.datas if not is_unwanted(d)]
+a.binaries = [b for b in a.binaries if should_keep(b[0])]
+a.datas = [d for d in a.datas if should_keep(d[0])]
 
 pyz = PYZ(a.pure)
 
@@ -213,76 +229,3 @@ coll = COLLECT(
     upx_exclude=[],
     name="Mouser",
 )
-
-# PyInstaller can still pull transitive Qt payload into the collected dist
-# even after Analysis-time filtering, so trim the packaged tree directly.
-DIST_QT = os.path.join("dist", "Mouser", "_internal", "PySide6", "Qt")
-KEEP_QML = {"QtCore", "QtQml", "QtQuick", "QtNetwork"}
-KEEP_QTQUICK = {"Controls", "Layouts", "Templates", "Window"}
-UNWANTED_PLUGIN_DIRS = {"webengine", "multimedia", "printsupport", "qmltooling", "sensorgestures"}
-UNWANTED_FILENAMES = {"libqpdf.so"}
-
-
-def cleanup_path(path):
-    if os.path.isdir(path):
-        shutil.rmtree(path, ignore_errors=True)
-        print(f"  [cleanup] removed {path}")
-        return
-    if os.path.exists(path):
-        os.remove(path)
-        print(f"  [cleanup] removed {path}")
-
-
-def cleanup_qt_dist():
-    if not os.path.isdir(DIST_QT):
-        return
-
-    lib_root = os.path.join(DIST_QT, "lib")
-    if os.path.isdir(lib_root):
-        for name in os.listdir(lib_root):
-            full_path = os.path.join(lib_root, name)
-            if name in UNWANTED_FILENAMES or is_unwanted(full_path):
-                cleanup_path(full_path)
-
-    qml_root = os.path.join(DIST_QT, "qml")
-    if os.path.isdir(qml_root):
-        for name in os.listdir(qml_root):
-            full_path = os.path.join(qml_root, name)
-            if name not in KEEP_QML:
-                cleanup_path(full_path)
-
-        qtquick_root = os.path.join(qml_root, "QtQuick")
-        if os.path.isdir(qtquick_root):
-            for name in os.listdir(qtquick_root):
-                full_path = os.path.join(qtquick_root, name)
-                if name not in KEEP_QTQUICK:
-                    cleanup_path(full_path)
-
-        for current_root, dirnames, filenames in os.walk(qml_root, topdown=False):
-            for filename in filenames:
-                full_path = os.path.join(current_root, filename)
-                if is_unwanted(full_path):
-                    cleanup_path(full_path)
-            for dirname in dirnames:
-                full_path = os.path.join(current_root, dirname)
-                if is_unwanted(full_path):
-                    cleanup_path(full_path)
-
-    plugins_root = os.path.join(DIST_QT, "plugins")
-    if os.path.isdir(plugins_root):
-        for name in os.listdir(plugins_root):
-            full_path = os.path.join(plugins_root, name)
-            if name in UNWANTED_PLUGIN_DIRS or is_unwanted(full_path):
-                cleanup_path(full_path)
-            elif os.path.isdir(full_path):
-                for child_name in os.listdir(full_path):
-                    child_path = os.path.join(full_path, child_name)
-                    if child_name in UNWANTED_FILENAMES or is_unwanted(child_path):
-                        cleanup_path(child_path)
-
-    cleanup_path(os.path.join(DIST_QT, "translations"))
-
-
-print("[Mouser] Post-build Linux Qt cleanup...")
-cleanup_qt_dist()
-print("[Mouser] Linux Qt cleanup done.")
