@@ -48,6 +48,8 @@ Look at the `reprog_controls` array.  Each entry has a `cid` (Control ID) and
 
 Not all CIDs are divertable.  Check the `flags` field -- if bit `0x0020` is
 set, the control can be intercepted by Mouser.
+Directional gesture mappings also require RawXY support (`0x0100` or
+`0x0200`) and a successful RawXY divert during connection.
 
 ---
 

@@ -78,6 +78,11 @@ _CID_GATED_BUTTONS = {
     "mode_shift": 0x00C4,
     "dpi_switch": 0x00FD,
 }
+_KEY_FLAG_DIVERTABLE = 0x0020
+_KEY_FLAG_RAW_XY = 0x0100
+_KEY_FLAG_FORCE_RAW_XY = 0x0200
+_MAPPING_FLAG_RAW_XY_DIVERTED = 0x0010
+_MAPPING_FLAG_FORCE_RAW_XY_DIVERTED = 0x0040
 
 
 @dataclass(frozen=True)
@@ -173,10 +178,56 @@ def _control_cid(control) -> int | None:
         return None
 
 
+def _control_int(control, field) -> int | None:
+    if not isinstance(control, dict):
+        return None
+    value = control.get(field)
+    if value in (None, ""):
+        return None
+    try:
+        return int(value, 0) if isinstance(value, str) else int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _control_by_cid(controls) -> dict[int, dict]:
+    by_cid = {}
+    for control in controls:
+        cid = _control_cid(control)
+        if cid is not None and isinstance(control, dict):
+            by_cid[cid] = control
+    return by_cid
+
+
+def _control_is_divertable(control) -> bool:
+    flags = _control_int(control, "flags")
+    if flags is None:
+        # Older tests and manually supplied dumps may only include CIDs.  Do not
+        # narrow those more aggressively than the previous CID-only behavior.
+        return True
+    return bool(flags & _KEY_FLAG_DIVERTABLE)
+
+
+def _control_has_raw_xy(control) -> bool:
+    flags = _control_int(control, "flags")
+    mapping_flags = _control_int(control, "mapping_flags")
+    if flags is None and mapping_flags is None:
+        return True
+    flags = flags or 0
+    mapping_flags = mapping_flags or 0
+    return bool(
+        flags & (_KEY_FLAG_RAW_XY | _KEY_FLAG_FORCE_RAW_XY)
+        or mapping_flags
+        & (_MAPPING_FLAG_RAW_XY_DIVERTED | _MAPPING_FLAG_FORCE_RAW_XY_DIVERTED)
+    )
+
+
 def derive_supported_buttons_from_reprog_controls(
     static_buttons: tuple[str, ...],
     controls,
     gesture_cids=None,
+    active_gesture_cid=None,
+    gesture_rawxy_enabled=None,
 ) -> tuple[str, ...]:
     """Narrow HID++-gated buttons using discovered REPROG_V4 controls.
 
@@ -186,21 +237,36 @@ def derive_supported_buttons_from_reprog_controls(
     if not controls:
         return static_buttons
 
-    control_cids = {
-        cid
-        for cid in (_control_cid(control) for control in controls)
-        if cid is not None
-    }
-    if not control_cids:
+    controls_by_cid = _control_by_cid(controls)
+    if not controls_by_cid:
         return static_buttons
 
     allowed = set(static_buttons)
     gesture_candidates = tuple(gesture_cids or DEFAULT_GESTURE_CIDS)
-    if not any(cid in control_cids for cid in gesture_candidates):
+    active_cid = _control_cid({"cid": active_gesture_cid})
+    if active_cid is None:
+        active_cid = next(
+            (
+                cid
+                for cid in gesture_candidates
+                if cid in controls_by_cid and _control_is_divertable(controls_by_cid[cid])
+            ),
+            None,
+        )
+    gesture_control = controls_by_cid.get(active_cid)
+    if not gesture_control or not _control_is_divertable(gesture_control):
         allowed.difference_update(_GESTURE_BUTTON_KEYS)
+    elif not (
+        (gesture_rawxy_enabled is not False)
+        and _control_has_raw_xy(gesture_control)
+    ):
+        allowed.difference_update(
+            ("gesture_left", "gesture_right", "gesture_up", "gesture_down")
+        )
 
     for button_key, cid in _CID_GATED_BUTTONS.items():
-        if cid not in control_cids:
+        control = controls_by_cid.get(cid)
+        if not control or not _control_is_divertable(control):
             allowed.discard(button_key)
 
     return tuple(button for button in static_buttons if button in allowed)
@@ -234,6 +300,8 @@ def build_connected_device_info(
     source=None,
     gesture_cids=None,
     reprog_controls=None,
+    active_gesture_cid=None,
+    gesture_rawxy_enabled=None,
 ) -> ConnectedDeviceInfo:
     spec = resolve_device(product_id=product_id, product_name=product_name)
     pid = int(product_id) if product_id not in (None, "") else None
@@ -252,6 +320,8 @@ def build_connected_device_info(
                 spec.supported_buttons,
                 reprog_controls,
                 gesture_cids=resolved_gesture_cids,
+                active_gesture_cid=active_gesture_cid,
+                gesture_rawxy_enabled=gesture_rawxy_enabled,
             ),
             gesture_cids=resolved_gesture_cids,
             dpi_min=spec.dpi_min,
