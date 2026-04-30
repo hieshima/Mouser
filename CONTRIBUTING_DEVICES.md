@@ -26,6 +26,7 @@ Paste this JSON into your GitHub issue  it is the single most useful piece of in
 | `reprog_controls` | Every button/control the device exposes via REPROG_V4 |
 | `discovered_features` | Which HID++ features the device supports (DPI, SmartShift, battery, etc.) |
 | `gesture_candidates` | CIDs that look like they can be diverted as gesture buttons |
+| `capability_inventory` | Mouser's runtime interpretation of HID++ controls and unsupported CIDs |
 | `supported_buttons` | The button set Mouser currently uses for this device |
 
 ---
@@ -93,6 +94,23 @@ table.  Unknown CIDs are intentionally not exposed until Mouser has code that
 knows how to handle them.  Horizontal scroll remains catalog-driven because
 some devices implement it as OS events or side-button + wheel behavior instead
 of a standalone reprogrammable control.
+
+Use the `capability_inventory` section in the dump to check Mouser's current
+runtime decision:
+
+- `gesture_click` means a divertable gesture control was found.
+- `gesture_directions` means RawXY gesture directions are usable.
+- `mode_shift` means divertable CID `0x00C4` was found.
+- `dpi_switch` means divertable CID `0x00FD` was found.
+- `hscroll_cids` lists tilt-style horizontal scroll controls when they appear
+  in `REPROG_V4`; this does not cover every horizontal-scroll implementation.
+- `known_unsupported_controls` lists real controls Mouser can see but does not
+  expose yet, such as MX Master 4 haptic/action-ring CID `0x01A0`.
+
+Logi Options+ catalog data is useful for image assets and candidate hotspots,
+but it is not enough to expose a button in Mouser.  A device PR should include
+the runtime dump or clearly state which hardware owner confirmed the button
+behavior.
 
 Use `core/logi_devices.py` only when you are adding a broader family fallback
 without exact art yet.
@@ -171,6 +189,7 @@ python main_qml.py
 
 Include:
 - The device discovery dump (JSON) in the PR description.
+- The `capability_inventory` section from that dump.
 - Which buttons you tested and confirmed working.
 - A photo or screenshot of the interactive layout (if applicable).
 - The Logitech model name and any alternative names your OS reports.
