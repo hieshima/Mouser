@@ -84,6 +84,14 @@ Pick the right button tuple for `supported_buttons`:
 - `GENERIC_BUTTONS` -- middle, back, forward (safe default)
 - Or define a new tuple if your mouse has a unique button set.
 
+`supported_buttons` is a static fallback.  When Mouser connects through HID++
+and discovers `REPROG_V4` controls, it may narrow HID++-gated buttons such as
+gesture, Smart Shift / mode shift, and DPI switch based on the runtime control
+table.  Unknown CIDs are intentionally not exposed until Mouser has code that
+knows how to handle them.  Horizontal scroll remains catalog-driven because
+some devices implement it as OS events or side-button + wheel behavior instead
+of a standalone reprogrammable control.
+
 Use `core/logi_devices.py` only when you are adding a broader family fallback
 without exact art yet.
 
