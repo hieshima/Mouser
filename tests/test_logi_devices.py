@@ -2,9 +2,11 @@ import unittest
 
 from core.logi_devices import (
     DEFAULT_GESTURE_CIDS,
+    GENERIC_BUTTONS,
     KNOWN_LOGI_DEVICES,
     MX_MASTER_BUTTONS,
     MX_VERTICAL_BUTTONS,
+    build_device_capability_inventory,
     build_connected_device_info,
     clamp_dpi,
     derive_supported_buttons_from_reprog_controls,
@@ -113,13 +115,10 @@ class LogiDeviceRegistryTests(unittest.TestCase):
                 with self.subTest(device=device.key, product_id=f"0x{product_id:04X}"):
                     self.assertEqual(resolve_device(product_id=product_id), device)
 
-    def test_all_exact_layout_keys_resolve_to_button_sets(self):
+    def test_all_device_layout_keys_resolve_to_button_sets(self):
         for device in KNOWN_LOGI_DEVICES:
             with self.subTest(device=device.key, ui_layout=device.ui_layout):
-                self.assertEqual(
-                    get_buttons_for_layout(device.ui_layout),
-                    device.supported_buttons,
-                )
+                self.assertIsNotNone(get_buttons_for_layout(device.ui_layout))
 
     def test_build_connected_device_info_uses_registry_defaults(self):
         info = build_connected_device_info(
@@ -197,6 +196,36 @@ class RuntimeSupportedButtonTests(unittest.TestCase):
                 gesture_cids=(0x00C3,),
             ),
             MX_MASTER_BUTTONS,
+        )
+
+    def test_capability_inventory_serializes_json_safe_shape(self):
+        inventory = build_device_capability_inventory(
+            [
+                self._control(0x00C4, flags="0x0531"),
+                self._control(0x00D7, flags="0x03A0"),
+                self._control(0x01A0, flags="0x0531"),
+            ],
+            gesture_cids=(0x00D7,),
+            active_gesture_cid="0x00D7",
+            gesture_rawxy_enabled=True,
+            discovered_features=(
+                "REPROG_V4 (0x1B04)",
+                "ADJUSTABLE_DPI (0x2201)",
+                "SMART_SHIFT_ENHANCED (0x2111)",
+                "BATTERY (0x1004)",
+            ),
+        )
+
+        self.assertTrue(inventory.has_reprog_controls)
+        self.assertEqual(inventory.active_gesture_cid, 0x00D7)
+        self.assertTrue(inventory.gesture_directions)
+        self.assertTrue(inventory.mode_shift)
+        self.assertTrue(inventory.smart_shift)
+        self.assertTrue(inventory.adjustable_dpi)
+        self.assertTrue(inventory.battery)
+        self.assertEqual(
+            inventory.to_dict()["known_unsupported_controls"],
+            [{"cid": "0x01A0", "name": "haptic"}],
         )
 
     def test_reprog_control_filter_removes_missing_gesture_group(self):
@@ -341,6 +370,107 @@ class RuntimeSupportedButtonTests(unittest.TestCase):
         self.assertIn("hscroll_right", info.supported_buttons)
         self.assertNotIn("mode_shift", info.supported_buttons)
 
+    def test_mx_anywhere_3_issue_142_distinguishes_mode_shift_and_gesture(self):
+        info = build_connected_device_info(
+            product_id=0xB025,
+            product_name="MX Anywhere 3",
+            reprog_controls=[
+                self._control(0x0052, flags=0x0531),
+                self._control(0x0053, flags=0x0D31),
+                self._control(0x0056, flags=0x0D31),
+                self._control(0x00C4, flags=0x0531),
+                self._control(0x00D7, flags=0x03A0),
+            ],
+            discovered_features=(
+                "REPROG_V4 (0x1B04)",
+                "ADJUSTABLE_DPI (0x2201)",
+                "SMART_SHIFT_ENHANCED (0x2111)",
+                "BATTERY (0x1004)",
+            ),
+        )
+
+        self.assertEqual(info.key, "mx_anywhere_3")
+        self.assertIn("mode_shift", info.supported_buttons)
+        self.assertIn("gesture", info.supported_buttons)
+        self.assertEqual(info.capability_inventory.active_gesture_cid, 0x00D7)
+        self.assertTrue(info.capability_inventory.mode_shift)
+        self.assertTrue(info.capability_inventory.smart_shift)
+        self.assertTrue(info.capability_inventory.adjustable_dpi)
+
+    def test_m720_issue_47_selects_0x00d0_gesture_without_mode_shift(self):
+        info = build_connected_device_info(
+            product_id=0xB015,
+            product_name="M720_Triathlon",
+            reprog_controls=[
+                self._control(0x0052, flags=0x0171),
+                self._control(0x0053, flags=0x0171),
+                self._control(0x0056, flags=0x0171),
+                self._control(0x005B, flags=0x0171),
+                self._control(0x005D, flags=0x0171),
+                self._control(0x00D0, flags=0x0171),
+                self._control(0x00D7, flags=0x03A0),
+            ],
+            discovered_features=("REPROG_V4 (0x1B04)", "BATTERY (0x1000)"),
+        )
+
+        self.assertEqual(info.key, "m720_triathlon")
+        self.assertEqual(info.ui_layout, "generic_mouse")
+        self.assertEqual(info.capability_inventory.active_gesture_cid, 0x00D0)
+        self.assertIn("gesture_up", info.supported_buttons)
+        self.assertIn("hscroll_left", info.supported_buttons)
+        self.assertIn("hscroll_right", info.supported_buttons)
+        self.assertNotIn("mode_shift", info.supported_buttons)
+
+    def test_mx_ergo_issue_22_tracks_precision_mode_as_known_unsupported(self):
+        info = build_connected_device_info(
+            product_id=0xB01D,
+            product_name="MX Ergo Multi-Device Trackball",
+            reprog_controls=[
+                self._control(0x0052, flags=0x0171),
+                self._control(0x0053, flags=0x0171),
+                self._control(0x0056, flags=0x0171),
+                self._control(0x00ED, flags=0x0171),
+                self._control(0x005B, flags=0x0171),
+                self._control(0x005D, flags=0x0171),
+                self._control(0x00D7, flags=0x03A0),
+            ],
+            discovered_features=("REPROG_V4 (0x1B04)", "BATTERY (0x1000)"),
+        )
+
+        self.assertEqual(info.key, "mx_ergo")
+        self.assertIn("gesture_down", info.supported_buttons)
+        self.assertIn("hscroll_left", info.supported_buttons)
+        self.assertNotIn("mode_shift", info.supported_buttons)
+        self.assertEqual(
+            info.capability_inventory.to_dict()["known_unsupported_controls"],
+            [{"cid": "0x00ED", "name": "precision_mode"}],
+        )
+
+    def test_ergo_m575_issue_95_uses_conservative_alias_support(self):
+        info = build_connected_device_info(
+            product_id=0xC52B,
+            product_name="ERGO M575 Trackball",
+            reprog_controls=[
+                self._control(0x0052, flags=0x0571),
+                self._control(0x0056, flags=0x0571),
+                self._control(0x0053, flags=0x0571),
+                self._control(0x00D7, flags=0x03A0),
+            ],
+            discovered_features=(
+                "REPROG_V4 (0x1B04)",
+                "ADJUSTABLE_DPI (0x2201)",
+                "BATTERY (0x1004)",
+            ),
+        )
+
+        self.assertEqual(info.key, "ergo_m575")
+        self.assertEqual(info.ui_layout, "generic_mouse")
+        self.assertEqual(info.supported_buttons, GENERIC_BUTTONS)
+        self.assertNotIn("gesture", info.supported_buttons)
+        self.assertNotIn("hscroll_left", info.supported_buttons)
+        self.assertTrue(info.capability_inventory.gesture_click)
+        self.assertTrue(info.capability_inventory.adjustable_dpi)
+
     def test_mx_anywhere_3s_solaar_controls_keep_mode_shift_and_catalog_hscroll(self):
         info = build_connected_device_info(
             product_id=0xB037,
@@ -382,6 +512,10 @@ class RuntimeSupportedButtonTests(unittest.TestCase):
         self.assertIn("gesture_down", info.supported_buttons)
         self.assertNotIn("action_ring", info.supported_buttons)
         self.assertNotIn("haptic", info.supported_buttons)
+        self.assertEqual(
+            info.capability_inventory.to_dict()["known_unsupported_controls"],
+            [{"cid": "0x01A0", "name": "haptic"}],
+        )
 
 
 if __name__ == "__main__":

@@ -78,6 +78,11 @@ _CID_GATED_BUTTONS = {
     "mode_shift": 0x00C4,
     "dpi_switch": 0x00FD,
 }
+_HSCROLL_CIDS = (0x005B, 0x005D)
+_KNOWN_UNSUPPORTED_CONTROLS = {
+    0x00ED: "precision_mode",
+    0x01A0: "haptic",
+}
 _KEY_FLAG_DIVERTABLE = 0x0020
 _KEY_FLAG_RAW_XY = 0x0100
 _KEY_FLAG_FORCE_RAW_XY = 0x0200
@@ -109,6 +114,71 @@ class LogiDeviceSpec:
 
 
 @dataclass(frozen=True)
+class DeviceCapabilityInventory:
+    """Runtime HID++ capabilities derived from the connected device dump."""
+
+    has_reprog_controls: bool = False
+    control_cids: tuple[int, ...] = ()
+    active_gesture_cid: int | None = None
+    divertable_gesture_cids: tuple[int, ...] = ()
+    gesture_click: bool = False
+    gesture_directions: bool = False
+    mode_shift: bool = False
+    dpi_switch: bool = False
+    hscroll_cids: tuple[int, ...] = ()
+    smart_shift: bool = False
+    adjustable_dpi: bool = False
+    battery: bool = False
+    known_unsupported_controls: tuple[tuple[int, str], ...] = ()
+
+    def supported_buttons(self, static_buttons: tuple[str, ...]) -> tuple[str, ...]:
+        if not self.has_reprog_controls:
+            return static_buttons
+
+        allowed = set(static_buttons)
+        if not self.gesture_click:
+            allowed.difference_update(_GESTURE_BUTTON_KEYS)
+        elif not self.gesture_directions:
+            allowed.difference_update(
+                ("gesture_left", "gesture_right", "gesture_up", "gesture_down")
+            )
+
+        if not self.mode_shift:
+            allowed.discard("mode_shift")
+        if not self.dpi_switch:
+            allowed.discard("dpi_switch")
+
+        return tuple(button for button in static_buttons if button in allowed)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "has_reprog_controls": self.has_reprog_controls,
+            "control_cids": [_format_cid(cid) for cid in self.control_cids],
+            "active_gesture_cid": (
+                _format_cid(self.active_gesture_cid)
+                if self.active_gesture_cid is not None
+                else None
+            ),
+            "divertable_gesture_cids": [
+                _format_cid(cid) for cid in self.divertable_gesture_cids
+            ],
+            "gesture_click": self.gesture_click,
+            "gesture_directions": self.gesture_directions,
+            "mode_shift": self.mode_shift,
+            "dpi_switch": self.dpi_switch,
+            "hscroll": bool(self.hscroll_cids),
+            "hscroll_cids": [_format_cid(cid) for cid in self.hscroll_cids],
+            "smart_shift": self.smart_shift,
+            "adjustable_dpi": self.adjustable_dpi,
+            "battery": self.battery,
+            "known_unsupported_controls": [
+                {"cid": _format_cid(cid), "name": name}
+                for cid, name in self.known_unsupported_controls
+            ],
+        }
+
+
+@dataclass(frozen=True)
 class ConnectedDeviceInfo:
     key: str
     display_name: str
@@ -122,6 +192,7 @@ class ConnectedDeviceInfo:
     gesture_cids: tuple[int, ...] = DEFAULT_GESTURE_CIDS
     dpi_min: int = DEFAULT_DPI_MIN
     dpi_max: int = DEFAULT_DPI_MAX
+    capability_inventory: DeviceCapabilityInventory = DeviceCapabilityInventory()
 
 
 # Seeded from Mouser's own device catalog first, then extended with broader
@@ -139,6 +210,66 @@ KNOWN_LOGI_DEVICES = tuple(
         supported_buttons=MX_VERTICAL_BUTTONS,
         dpi_max=4000,
     ),
+    LogiDeviceSpec(
+        key="m720_triathlon",
+        display_name="M720 Triathlon",
+        product_ids=(0xB015,),
+        aliases=("M720_Triathlon", "M720 Triathlon Multi-Device Mouse"),
+        ui_layout="generic_mouse",
+        image_asset="icons/mouse-simple.svg",
+        supported_buttons=(
+            "middle",
+            "gesture",
+            "gesture_left",
+            "gesture_right",
+            "gesture_up",
+            "gesture_down",
+            "xbutton1",
+            "xbutton2",
+            "hscroll_left",
+            "hscroll_right",
+        ),
+        gesture_cids=(0x00D0,),
+    ),
+    LogiDeviceSpec(
+        key="mx_ergo",
+        display_name="MX Ergo",
+        product_ids=(0xB01D,),
+        aliases=(
+            "MX Ergo Multi-Device Trackball",
+            "MX_ERGO",
+            "MX Ergo Wireless Trackball",
+        ),
+        ui_layout="generic_mouse",
+        image_asset="icons/mouse-simple.svg",
+        supported_buttons=(
+            "middle",
+            "gesture",
+            "gesture_left",
+            "gesture_right",
+            "gesture_up",
+            "gesture_down",
+            "xbutton1",
+            "xbutton2",
+            "hscroll_left",
+            "hscroll_right",
+        ),
+        gesture_cids=(0x00D7,),
+        dpi_max=4000,
+    ),
+    LogiDeviceSpec(
+        key="ergo_m575",
+        display_name="ERGO M575 Trackball",
+        aliases=(
+            "ERGO M575 Trackball",
+            "Logitech ERGO M575 Trackball",
+            "ERGO M575",
+        ),
+        ui_layout="generic_mouse",
+        image_asset="icons/mouse-simple.svg",
+        supported_buttons=GENERIC_BUTTONS,
+        gesture_cids=(0x00D7,),
+    ),
 )
 
 
@@ -146,6 +277,10 @@ def _normalize_name(value) -> str:
     if not value:
         return ""
     return " ".join(str(value).strip().lower().replace("_", " ").split())
+
+
+def _format_cid(cid: int) -> str:
+    return f"0x{cid:04X}"
 
 
 def iter_known_devices() -> Iterable[LogiDeviceSpec]:
@@ -199,6 +334,30 @@ def _control_by_cid(controls) -> dict[int, dict]:
     return by_cid
 
 
+def _feature_tokens(discovered_features) -> tuple[str, ...]:
+    if not discovered_features:
+        return ()
+    if isinstance(discovered_features, dict):
+        values = discovered_features.keys()
+    else:
+        values = discovered_features
+    tokens = []
+    for value in values:
+        if isinstance(value, int):
+            tokens.append(_format_cid(value).lower())
+        else:
+            tokens.append(str(value).strip().lower())
+    return tuple(tokens)
+
+
+def _has_feature(tokens: tuple[str, ...], *needles: str) -> bool:
+    return any(
+        needle.lower() in token
+        for token in tokens
+        for needle in needles
+    )
+
+
 def _control_is_divertable(control) -> bool:
     flags = _control_int(control, "flags")
     if flags is None:
@@ -222,6 +381,70 @@ def _control_has_raw_xy(control) -> bool:
     )
 
 
+def build_device_capability_inventory(
+    controls=None,
+    *,
+    gesture_cids=None,
+    active_gesture_cid=None,
+    gesture_rawxy_enabled=None,
+    discovered_features=None,
+) -> DeviceCapabilityInventory:
+    controls_by_cid = _control_by_cid(controls or ())
+    feature_tokens = _feature_tokens(discovered_features)
+    gesture_candidates = tuple(gesture_cids or DEFAULT_GESTURE_CIDS)
+    divertable_gesture_cids = tuple(
+        cid
+        for cid in gesture_candidates
+        if cid in controls_by_cid and _control_is_divertable(controls_by_cid[cid])
+    )
+
+    active_cid = _control_cid({"cid": active_gesture_cid})
+    if active_cid is None or active_cid not in controls_by_cid:
+        active_cid = divertable_gesture_cids[0] if divertable_gesture_cids else None
+
+    gesture_control = controls_by_cid.get(active_cid)
+    gesture_click = bool(gesture_control and _control_is_divertable(gesture_control))
+    gesture_directions = bool(
+        gesture_click
+        and gesture_rawxy_enabled is not False
+        and _control_has_raw_xy(gesture_control)
+    )
+
+    mode_shift_control = controls_by_cid.get(_CID_GATED_BUTTONS["mode_shift"])
+    dpi_switch_control = controls_by_cid.get(_CID_GATED_BUTTONS["dpi_switch"])
+    known_unsupported = tuple(
+        (cid, _KNOWN_UNSUPPORTED_CONTROLS[cid])
+        for cid in sorted(_KNOWN_UNSUPPORTED_CONTROLS)
+        if cid in controls_by_cid
+    )
+
+    return DeviceCapabilityInventory(
+        has_reprog_controls=bool(controls_by_cid),
+        control_cids=tuple(sorted(controls_by_cid)),
+        active_gesture_cid=active_cid,
+        divertable_gesture_cids=divertable_gesture_cids,
+        gesture_click=gesture_click,
+        gesture_directions=gesture_directions,
+        mode_shift=bool(
+            mode_shift_control and _control_is_divertable(mode_shift_control)
+        ),
+        dpi_switch=bool(
+            dpi_switch_control and _control_is_divertable(dpi_switch_control)
+        ),
+        hscroll_cids=tuple(
+            cid
+            for cid in _HSCROLL_CIDS
+            if cid in controls_by_cid and _control_is_divertable(controls_by_cid[cid])
+        ),
+        smart_shift=_has_feature(
+            feature_tokens, "smart_shift", "0x2110", "0x2111"
+        ),
+        adjustable_dpi=_has_feature(feature_tokens, "adjustable_dpi", "0x2201"),
+        battery=_has_feature(feature_tokens, "battery", "0x1000", "0x1004"),
+        known_unsupported_controls=known_unsupported,
+    )
+
+
 def derive_supported_buttons_from_reprog_controls(
     static_buttons: tuple[str, ...],
     controls,
@@ -234,42 +457,13 @@ def derive_supported_buttons_from_reprog_controls(
     OS-level buttons and horizontal scroll remain catalog-driven because they
     are not always represented as divertable HID++ controls.
     """
-    if not controls:
-        return static_buttons
-
-    controls_by_cid = _control_by_cid(controls)
-    if not controls_by_cid:
-        return static_buttons
-
-    allowed = set(static_buttons)
-    gesture_candidates = tuple(gesture_cids or DEFAULT_GESTURE_CIDS)
-    active_cid = _control_cid({"cid": active_gesture_cid})
-    if active_cid is None:
-        active_cid = next(
-            (
-                cid
-                for cid in gesture_candidates
-                if cid in controls_by_cid and _control_is_divertable(controls_by_cid[cid])
-            ),
-            None,
-        )
-    gesture_control = controls_by_cid.get(active_cid)
-    if not gesture_control or not _control_is_divertable(gesture_control):
-        allowed.difference_update(_GESTURE_BUTTON_KEYS)
-    elif not (
-        (gesture_rawxy_enabled is not False)
-        and _control_has_raw_xy(gesture_control)
-    ):
-        allowed.difference_update(
-            ("gesture_left", "gesture_right", "gesture_up", "gesture_down")
-        )
-
-    for button_key, cid in _CID_GATED_BUTTONS.items():
-        control = controls_by_cid.get(cid)
-        if not control or not _control_is_divertable(control):
-            allowed.discard(button_key)
-
-    return tuple(button for button in static_buttons if button in allowed)
+    inventory = build_device_capability_inventory(
+        controls,
+        gesture_cids=gesture_cids,
+        active_gesture_cid=active_gesture_cid,
+        gesture_rawxy_enabled=gesture_rawxy_enabled,
+    )
+    return inventory.supported_buttons(static_buttons)
 
 
 # Maps family layout keys to their button sets so the override picker can
@@ -302,9 +496,17 @@ def build_connected_device_info(
     reprog_controls=None,
     active_gesture_cid=None,
     gesture_rawxy_enabled=None,
+    discovered_features=None,
 ) -> ConnectedDeviceInfo:
     spec = resolve_device(product_id=product_id, product_name=product_name)
     pid = int(product_id) if product_id not in (None, "") else None
+    inventory = build_device_capability_inventory(
+        reprog_controls,
+        gesture_cids=gesture_cids or getattr(spec, "gesture_cids", None),
+        active_gesture_cid=active_gesture_cid,
+        gesture_rawxy_enabled=gesture_rawxy_enabled,
+        discovered_features=discovered_features,
+    )
     if spec:
         resolved_gesture_cids = tuple(gesture_cids or spec.gesture_cids)
         return ConnectedDeviceInfo(
@@ -316,16 +518,11 @@ def build_connected_device_info(
             source=source,
             ui_layout=spec.ui_layout,
             image_asset=spec.image_asset,
-            supported_buttons=derive_supported_buttons_from_reprog_controls(
-                spec.supported_buttons,
-                reprog_controls,
-                gesture_cids=resolved_gesture_cids,
-                active_gesture_cid=active_gesture_cid,
-                gesture_rawxy_enabled=gesture_rawxy_enabled,
-            ),
+            supported_buttons=inventory.supported_buttons(spec.supported_buttons),
             gesture_cids=resolved_gesture_cids,
             dpi_min=spec.dpi_min,
             dpi_max=spec.dpi_max,
+            capability_inventory=inventory,
         )
 
     # Fallback for unrecognized devices (e.g., USB Receiver PID 0xC52B which contains
@@ -343,8 +540,9 @@ def build_connected_device_info(
         source=source,
         ui_layout="mx_master_3s",
         image_asset="logitech-mice/mx_master_3s/mouse.png",
-        supported_buttons=MX_MASTER_BUTTONS,
+        supported_buttons=inventory.supported_buttons(MX_MASTER_BUTTONS),
         gesture_cids=tuple(gesture_cids or DEFAULT_GESTURE_CIDS),
+        capability_inventory=inventory,
     )
 
 
