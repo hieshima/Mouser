@@ -6,13 +6,16 @@ from core.logi_devices import KNOWN_LOGI_DEVICES
 
 
 class DeviceLayoutTests(unittest.TestCase):
-    def test_known_devices_have_interactive_layouts_and_assets(self):
+    def test_known_devices_have_layouts_and_assets(self):
         image_root = Path(__file__).resolve().parents[1] / "images"
         for device in KNOWN_LOGI_DEVICES:
             with self.subTest(device=device.key, ui_layout=device.ui_layout):
                 layout = get_device_layout(device.ui_layout)
 
-                self.assertTrue(layout["interactive"])
+                if device.ui_layout == "generic_mouse":
+                    self.assertFalse(layout["interactive"])
+                else:
+                    self.assertTrue(layout["interactive"])
                 self.assertEqual(layout["key"], device.ui_layout)
                 self.assertTrue((image_root / layout["image_asset"]).is_file())
 
