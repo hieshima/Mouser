@@ -126,6 +126,55 @@ class GestureCandidateSelectionTests(unittest.TestCase):
         )
 
 
+class DeviceInfoDumpTests(unittest.TestCase):
+    def test_dump_device_info_includes_runtime_capability_inventory(self):
+        listener = hid_gesture.HidGestureListener()
+        controls = [
+            {
+                "index": 0,
+                "cid": 0x00D0,
+                "task": 0x00AD,
+                "flags": 0x0171,
+                "mapped_to": 0x00D0,
+                "mapping_flags": 0x0000,
+            },
+            {
+                "index": 1,
+                "cid": 0x005B,
+                "task": 0x003F,
+                "flags": 0x0171,
+                "mapped_to": 0x005B,
+                "mapping_flags": 0x0000,
+            },
+        ]
+        listener._feat_idx = 0x0B
+        listener._battery_idx = 0x08
+        listener._battery_feature_id = hid_gesture.FEAT_BATTERY_STATUS
+        listener._gesture_candidates = [0x00D0]
+        listener._connected_device_info = hid_gesture.build_connected_device_info(
+            product_id=0xB015,
+            product_name="M720_Triathlon",
+            reprog_controls=controls,
+            gesture_cids=(0x00D0,),
+            active_gesture_cid=0x00D0,
+            gesture_rawxy_enabled=True,
+            discovered_features=listener._discovered_feature_ids(),
+        )
+        listener._last_controls = controls
+
+        dump = listener.dump_device_info()
+
+        self.assertEqual(dump["device_key"], "m720_triathlon")
+        self.assertIn("capability_inventory", dump)
+        self.assertEqual(
+            dump["capability_inventory"]["active_gesture_cid"],
+            "0x00D0",
+        )
+        self.assertTrue(dump["capability_inventory"]["gesture_directions"])
+        self.assertEqual(dump["capability_inventory"]["hscroll_cids"], ["0x005B"])
+        self.assertTrue(dump["capability_inventory"]["battery"])
+
+
 class _FakeHidDevice:
     def __init__(self):
         self.open_path = Mock()

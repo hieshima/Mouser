@@ -788,6 +788,22 @@ class HidGestureListener:
     def connected_device(self):
         return self._connected_device_info
 
+    def _discovered_feature_ids(self):
+        feature_ids = []
+        if self._feat_idx is not None:
+            feature_ids.append(FEAT_REPROG_V4)
+        if self._dpi_idx is not None:
+            feature_ids.append(FEAT_ADJ_DPI)
+        if self._smart_shift_idx is not None:
+            feature_ids.append(
+                FEAT_SMART_SHIFT_ENHANCED
+                if self._smart_shift_enhanced
+                else FEAT_SMART_SHIFT
+            )
+        if self._battery_idx is not None and self._battery_feature_id is not None:
+            feature_ids.append(self._battery_feature_id)
+        return tuple(feature_ids)
+
     def dump_device_info(self):
         """Return a dict describing everything we know about the connected device.
 
@@ -837,6 +853,7 @@ class HidGestureListener:
             "discovered_features": features,
             "reprog_controls": controls,
             "gesture_candidates": [f"0x{c:04X}" for c in self._gesture_candidates],
+            "capability_inventory": dev.capability_inventory.to_dict(),
         }
 
     # ── device discovery ──────────────────────────────────────────
@@ -1804,6 +1821,7 @@ class HidGestureListener:
                             reprog_controls=controls,
                             active_gesture_cid=self._gesture_cid,
                             gesture_rawxy_enabled=self._rawxy_enabled,
+                            discovered_features=self._discovered_feature_ids(),
                         )
                         return True
                     continue     # divert failed — try next receiver slot
