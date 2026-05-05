@@ -2,7 +2,7 @@ import importlib
 import os
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from core import key_simulator
 
@@ -101,6 +101,61 @@ class LinuxDesktopShortcutTests(unittest.TestCase):
         self.assertIn(module.KEY_4, module._ALL_KEY_CODES)
         self.assertEqual(module._KEY_NAME_TO_CODE["control"], module.KEY_LEFTCTRL)
         self.assertEqual(module._KEY_NAME_TO_CODE["cmd"], module.KEY_LEFTMETA)
+
+
+class MacOSZoomActionTests(unittest.TestCase):
+    def _reload_for_macos(self):
+        with patch.object(sys, "platform", "darwin"):
+            importlib.reload(key_simulator)
+        self.addCleanup(importlib.reload, key_simulator)
+        return key_simulator
+
+    def test_zoom_actions_exist(self):
+        module = self._reload_for_macos()
+
+        self.assertEqual(module.ACTIONS["zoom_in"]["label"], "Zoom In")
+        self.assertEqual(module.ACTIONS["zoom_in"]["category"], "Navigation")
+        self.assertEqual(module.ACTIONS["zoom_in"]["keys"], [])
+        self.assertEqual(module.ACTIONS["zoom_out"]["label"], "Zoom Out")
+        self.assertEqual(module.ACTIONS["zoom_out"]["category"], "Navigation")
+        self.assertEqual(module.ACTIONS["zoom_out"]["keys"], [])
+
+    def test_zoom_in_sends_three_command_equal_presses(self):
+        module = self._reload_for_macos()
+
+        with patch.object(module, "send_key_combo") as send_key_combo:
+            module.execute_action("zoom_in")
+
+        expected = [module.kVK_Command, module.kVK_ANSI_Equal]
+        self.assertEqual(send_key_combo.call_count, 3)
+        send_key_combo.assert_has_calls([
+            call(expected, hold_ms=0),
+            call(expected, hold_ms=0),
+            call(expected, hold_ms=0),
+        ])
+
+    def test_zoom_out_sends_three_command_minus_presses(self):
+        module = self._reload_for_macos()
+
+        with patch.object(module, "send_key_combo") as send_key_combo:
+            module.execute_action("zoom_out")
+
+        expected = [module.kVK_Command, module.kVK_ANSI_Minus]
+        self.assertEqual(send_key_combo.call_count, 3)
+        send_key_combo.assert_has_calls([
+            call(expected, hold_ms=0),
+            call(expected, hold_ms=0),
+            call(expected, hold_ms=0),
+        ])
+
+    def test_existing_alt_tab_action_still_uses_standard_key_path(self):
+        module = self._reload_for_macos()
+
+        with patch.object(module, "send_key_combo") as send_key_combo:
+            module.execute_action("alt_tab")
+
+        send_key_combo.assert_called_once_with([module.kVK_Command, module.kVK_Tab])
+
 
 class CustomShortcutCaptureTests(unittest.TestCase):
     def test_custom_action_label_uses_super_as_canonical_name(self):
