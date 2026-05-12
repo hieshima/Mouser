@@ -63,7 +63,7 @@ class MouseHook(BaseMouseHook):
         self._wake_observer = None
         self._session_resign_observer = None
         self._session_activate_observer = None
-        self._dispatch_queue = queue.Queue()
+        self._init_dispatch_queue(maxsize=512)
         self._dispatch_thread = None
         self._first_event_logged = False
 
@@ -219,7 +219,7 @@ class MouseHook(BaseMouseHook):
                     "dy": self._gesture_delta_y,
                 }
             )
-            self._dispatch_queue.put(
+            self._enqueue_dispatch_event(
                 MouseEvent(
                     gesture_event,
                     {
@@ -400,7 +400,7 @@ class MouseHook(BaseMouseHook):
                         mouse_event = MouseEvent(MouseEvent.HSCROLL_LEFT, abs(h_delta))
                         should_block = MouseEvent.HSCROLL_LEFT in self._blocked_events
                 if mouse_event:
-                    self._dispatch_queue.put(mouse_event)
+                    self._enqueue_dispatch_event(mouse_event)
                     mouse_event = None
                 if should_block:
                     return None
@@ -409,7 +409,7 @@ class MouseHook(BaseMouseHook):
                         return None
 
             if mouse_event:
-                self._dispatch_queue.put(mouse_event)
+                self._enqueue_dispatch_event(mouse_event)
 
             if should_block:
                 return None

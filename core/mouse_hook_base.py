@@ -2,6 +2,7 @@
 Shared mouse hook behavior used by platform implementations.
 """
 
+import queue
 import time
 
 try:
@@ -41,6 +42,33 @@ class BaseMouseHook:
         self._gesture_cooldown_until = 0.0
         self._gesture_input_source = None
         self._connected_device = None
+        self._dispatch_queue = None
+
+    def _init_dispatch_queue(self, maxsize=0):
+        """Initialize dispatch queue storage for subclasses with event threads."""
+        self._dispatch_queue = queue.Queue(maxsize=max(0, int(maxsize)))
+
+    def _enqueue_dispatch_event(self, event):
+        """Best-effort enqueue that bounds memory when queue has a max size."""
+        q = self._dispatch_queue
+        if q is None:
+            return
+        if q.maxsize <= 0:
+            q.put(event)
+            return
+        try:
+            q.put_nowait(event)
+            return
+        except queue.Full:
+            pass
+        try:
+            q.get_nowait()
+        except queue.Empty:
+            pass
+        try:
+            q.put_nowait(event)
+        except queue.Full:
+            self._emit_debug(f"Dropped event due to full dispatch queue: {event.event_type}")
 
     def register(self, event_type, callback):
         self._callbacks.setdefault(event_type, []).append(callback)
@@ -254,3 +282,24 @@ class BaseMouseHook:
     def _on_hid_disconnect(self):
         self._connected_device = None
         self._set_device_connected(False)
+
+    def _on_hid_gesture_down(self):
+        self._dispatch(MouseEvent(MouseEvent.GESTURE_DOWN))
+
+    def _on_hid_gesture_up(self):
+        self._dispatch(MouseEvent(MouseEvent.GESTURE_UP))
+
+    def _on_hid_gesture_move(self, dx, dy):
+        self._accumulate_gesture_delta(dx, dy, "hid_rawxy")
+
+    def _on_hid_mode_shift_down(self):
+        self._dispatch(MouseEvent(MouseEvent.MODE_SHIFT_DOWN))
+
+    def _on_hid_mode_shift_up(self):
+        self._dispatch(MouseEvent(MouseEvent.MODE_SHIFT_UP))
+
+    def _on_hid_dpi_switch_down(self):
+        self._dispatch(MouseEvent(MouseEvent.DPI_SWITCH_DOWN))
+
+    def _on_hid_dpi_switch_up(self):
+        self._dispatch(MouseEvent(MouseEvent.DPI_SWITCH_UP))
