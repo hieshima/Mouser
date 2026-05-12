@@ -104,7 +104,7 @@ class BackendDeviceLayoutTests(unittest.TestCase):
 
         self.assertEqual(backend.deviceImageSource, expected)
 
-    def test_mx_anywhere_2s_hotspots_expose_hscroll_pair(self):
+    def test_mx_anywhere_2s_hotspots_expose_horizontal_scroll(self):
         device = SimpleNamespace(
             key="mx_anywhere_2s",
             display_name="MX Anywhere 2S",
@@ -123,15 +123,10 @@ class BackendDeviceLayoutTests(unittest.TestCase):
             if hotspot.get("isHScroll")
         ]
 
-        self.assertEqual(len(hscroll_hotspots), 2)
-        self.assertEqual(
-            {hotspot["buttonKey"] for hotspot in hscroll_hotspots},
-            {"hscroll_left", "hscroll_right"},
-        )
-        self.assertEqual(
-            {hotspot["summaryType"] for hotspot in hscroll_hotspots},
-            {"hscroll"},
-        )
+        self.assertEqual(len(hscroll_hotspots), 1)
+        self.assertEqual(hscroll_hotspots[0]["buttonKey"], "hscroll_left")
+        self.assertEqual(hscroll_hotspots[0]["summaryType"], "hscroll")
+        self.assertTrue(hscroll_hotspots[0]["isHScroll"])
 
     def test_disconnected_override_request_does_not_persist(self):
         backend = self._make_backend()

@@ -58,14 +58,17 @@ class DeviceLayoutTests(unittest.TestCase):
         self.assertEqual(layout["image_asset"], "mouse_mx_anywhere_3s.png")
         self.assertGreater(len(layout["hotspots"]), 0)
 
-    def test_mx_anywhere_device_specific_keys_use_family_layout(self):
+    def test_mx_anywhere_device_specific_keys_use_catalog_layout(self):
         for layout_key in ("mx_anywhere_3s", "mx_anywhere_3"):
             with self.subTest(layout_key=layout_key):
                 layout = get_device_layout(layout_key)
 
-                self.assertEqual(layout["key"], "mx_anywhere")
+                self.assertEqual(layout["key"], layout_key)
                 self.assertTrue(layout["interactive"])
-                self.assertEqual(layout["image_asset"], "mouse_mx_anywhere_3s.png")
+                self.assertEqual(
+                    layout["image_asset"],
+                    f"logitech-mice/{layout_key}/mouse.png",
+                )
                 self.assertGreater(len(layout["hotspots"]), 0)
 
     def test_mx_anywhere_2s_layout_identity_and_wheel_tilt_hotspots(self):
@@ -73,32 +76,30 @@ class DeviceLayoutTests(unittest.TestCase):
 
         self.assertEqual(layout["key"], "mx_anywhere_2s")
         self.assertEqual(layout["label"], "MX Anywhere 2S")
+        self.assertEqual(
+            layout["image_asset"],
+            "logitech-mice/mx_anywhere_2s/mouse.png",
+        )
+        self.assertEqual(
+            [hotspot["buttonKey"] for hotspot in layout["hotspots"]],
+            ["middle", "xbutton1", "xbutton2", "hscroll_left"],
+        )
         hotspots = {hotspot["buttonKey"]: hotspot for hotspot in layout["hotspots"]}
         self.assertNotIn("gesture_up", hotspots)
         self.assertNotIn("gesture_down", hotspots)
 
+        self.assertEqual(hotspots["middle"]["label"], "Middle button")
+        self.assertEqual(hotspots["xbutton1"]["label"], "Back button")
+        self.assertEqual(hotspots["xbutton2"]["label"], "Forward button")
+
         left = hotspots["hscroll_left"]
-        self.assertEqual(left["label"], "Wheel Left")
+        self.assertEqual(left["label"], "Horizontal scroll")
         self.assertEqual(left["summaryType"], "hscroll")
         self.assertTrue(left["isHScroll"])
-        self.assertEqual(left["normX"], 0.39)
-        self.assertEqual(left["normY"], 0.57)
-        self.assertEqual(left["labelSide"], "left")
-        self.assertEqual(left["labelOffX"], 200)
-        self.assertEqual(left["labelOffY"], 80)
-
-        right = hotspots["hscroll_right"]
-        self.assertEqual(right["label"], "Wheel Right")
-        self.assertEqual(right["summaryType"], "hscroll")
-        self.assertTrue(right["isHScroll"])
-        self.assertEqual(right["normX"], 0.26)
-        self.assertEqual(right["normY"], 0.44)
-        self.assertEqual(right["labelSide"], "left")
-        self.assertEqual(right["labelOffX"], -20)
-        self.assertEqual(right["labelOffY"], -30)
+        self.assertNotIn("hscroll_right", hotspots)
 
     def test_mx_anywhere_2s_has_no_self_fallback(self):
-        self.assertNotEqual(_FAMILY_FALLBACKS.get("mx_anywhere_2s"), "mx_anywhere_2s")
+        self.assertEqual(_FAMILY_FALLBACKS.get("mx_anywhere_2s"), "mx_anywhere")
 
     def test_mx_vertical_layout_is_interactive(self):
         layout = get_device_layout("mx_vertical")

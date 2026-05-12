@@ -65,12 +65,12 @@ Add a new dict to `LOGI_DEVICE_SPECS`:
 
 ```python
 {
-    "key": "mx_ergo",                          # unique snake_case key
-    "display_name": "MX Ergo",                 # human-readable name
+    "key": "example_mouse",                    # unique snake_case key
+    "display_name": "Example Mouse",           # human-readable name
     "product_ids": (0xB0XX,),                  # from your dump's product_id
-    "aliases": ("Logitech MX Ergo",),          # alternative names the device may report
-    "ui_layout": "mx_ergo",                    # exact layout key
-    "image_asset": "logitech-mice/mx_ergo/mouse.png",
+    "aliases": ("Logitech Example Mouse",),    # alternative names the device may report
+    "ui_layout": "example_mouse",              # exact layout key
+    "image_asset": "logitech-mice/example_mouse/mouse.png",
     "supported_buttons": GENERIC_BUTTONS,      # adjust to match your mouse
     "gesture_cids": (0x00C3,),                 # from gesture_candidates in your dump
     "dpi_min": 200,
@@ -108,10 +108,10 @@ growing `core/device_layouts.py`:
 2. Add a layout dict to `LOGI_DEVICE_LAYOUTS`:
 
 ```python
-"mx_ergo": {
-    "key": "mx_ergo",
-    "label": "MX Ergo",
-    "image_asset": "logitech-mice/mx_ergo/mouse.png",
+"example_mouse": {
+    "key": "example_mouse",
+    "label": "Example Mouse",
+    "image_asset": "logitech-mice/example_mouse/mouse.png",
     "image_width": 260,
     "image_height": 400,
     "interactive": True,

@@ -3,7 +3,6 @@ import unittest
 from core.device_layouts import get_device_layout
 from core.logi_devices import (
     DEFAULT_GESTURE_CIDS,
-    MX_ANYWHERE_2S_BUTTONS,
     KNOWN_LOGI_DEVICES,
     MX_MASTER_BUTTONS,
     MX_VERTICAL_BUTTONS,
@@ -44,19 +43,19 @@ class LogiDeviceRegistryTests(unittest.TestCase):
         self.assertEqual(device.key, "mx_master_3s")
         self.assertEqual(device.display_name, "MX Master 3S")
 
+    def test_resolve_mx_master_3s_business_pid(self):
+        device = resolve_device(product_id=0xB043)
+
+        self.assertIsNotNone(device)
+        self.assertEqual(device.key, "mx_master_3s")
+
     def test_resolve_mx_anywhere_3s_uses_layout_key(self):
         device = resolve_device(product_id=0xB037)
 
         self.assertIsNotNone(device)
         self.assertEqual(device.key, "mx_anywhere_3s")
         self.assertEqual(device.ui_layout, "mx_anywhere_3s")
-        self.assertEqual(device.image_asset, "mouse_mx_anywhere_3s.png")
-
-    def test_resolve_mx_master_3s_business_pid(self):
-        device = resolve_device(product_id=0xB043)
-
-        self.assertIsNotNone(device)
-        self.assertEqual(device.key, "mx_master_3s")
+        self.assertEqual(device.image_asset, "logitech-mice/mx_anywhere_3s/mouse.png")
 
     def test_resolve_device_by_alias(self):
         device = resolve_device(product_name="MX Master 3 for Mac")
@@ -147,7 +146,7 @@ class LogiDeviceRegistryTests(unittest.TestCase):
         self.assertEqual(info.ui_layout, "mx_master_3")
         self.assertIn("mode_shift", info.supported_buttons)
 
-    def test_build_connected_device_info_filters_runtime_hid_buttons(self):
+    def test_hid_capability_guardrail_filters_runtime_buttons(self):
         info = build_connected_device_info(
             product_id=0xB023,
             reprog_controls=[
@@ -163,14 +162,14 @@ class LogiDeviceRegistryTests(unittest.TestCase):
         self.assertNotIn("mode_shift", info.supported_buttons)
         self.assertIn("hscroll_left", info.supported_buttons)
 
-    def test_build_mx_anywhere_3s_uses_anywhere_family_layout(self):
+    def test_build_mx_anywhere_3s_uses_exact_catalog_layout(self):
         info = build_connected_device_info(product_id=0xB037)
         layout = get_device_layout(info.ui_layout)
 
         self.assertEqual(info.key, "mx_anywhere_3s")
         self.assertEqual(info.ui_layout, "mx_anywhere_3s")
-        self.assertEqual(info.image_asset, "mouse_mx_anywhere_3s.png")
-        self.assertEqual(layout["key"], "mx_anywhere")
+        self.assertEqual(info.image_asset, "logitech-mice/mx_anywhere_3s/mouse.png")
+        self.assertEqual(layout["key"], "mx_anywhere_3s")
         self.assertTrue(layout["interactive"])
 
     def test_build_connected_device_info_falls_back_to_runtime_name(self):
@@ -213,13 +212,16 @@ class LogiDeviceRegistryTests(unittest.TestCase):
         device = resolve_device(product_id=0xB01A)
 
         self.assertIsNotNone(device)
-        self.assertIs(device.supported_buttons, MX_ANYWHERE_2S_BUTTONS)
         self.assertIn("middle", device.supported_buttons)
         self.assertIn("hscroll_left", device.supported_buttons)
         self.assertIn("hscroll_right", device.supported_buttons)
+        self.assertNotIn("mode_shift", device.supported_buttons)
 
     def test_get_buttons_for_mx_anywhere_2s_layout_uses_specific_tuple(self):
-        self.assertIs(get_buttons_for_layout("mx_anywhere_2s"), MX_ANYWHERE_2S_BUTTONS)
+        device = resolve_device(product_id=0xB01A)
+
+        self.assertIsNotNone(device)
+        self.assertIs(get_buttons_for_layout("mx_anywhere_2s"), device.supported_buttons)
 
 
 class RuntimeSupportedButtonTests(unittest.TestCase):

@@ -154,71 +154,6 @@ MX_ANYWHERE_LAYOUT = {
     ],
 }
 
-MX_ANYWHERE_2S_LAYOUT = {
-    "key": "mx_anywhere_2s",
-    "label": "MX Anywhere 2S",
-    "image_asset": "mouse_mx_anywhere_3s.png",
-    "image_width": 400,
-    "image_height": 320,
-    "interactive": True,
-    "manual_selectable": True,
-    "note": "",
-    "hotspots": [
-        {
-            "buttonKey": "hscroll_left",
-            "label": "Wheel Left",
-            "summaryType": "hscroll",
-            "isHScroll": True,
-            "normX": 0.39,
-            "normY": 0.57,
-            "labelSide": "left",
-            "labelOffX": 200,
-            "labelOffY": 80,
-        },
-        {
-            "buttonKey": "hscroll_right",
-            "label": "Wheel Right",
-            "summaryType": "hscroll",
-            "isHScroll": True,
-            "normX": 0.26,
-            "normY": 0.44,
-            "labelSide": "left",
-            "labelOffX": -20,
-            "labelOffY": -30,
-        },
-        {
-            "buttonKey": "gesture",
-            "label": "Gesture button",
-            "summaryType": "gesture",
-            "normX": 0.46,
-            "normY": 0.28,
-            "labelSide": "right",
-            "labelOffX": 150,
-            "labelOffY": -70,
-        },
-        {
-            "buttonKey": "xbutton2",
-            "label": "Forward button",
-            "summaryType": "mapping",
-            "normX": 0.69,
-            "normY": 0.53,
-            "labelSide": "right",
-            "labelOffX": 150,
-            "labelOffY": 30,
-        },
-        {
-            "buttonKey": "xbutton1",
-            "label": "Back button",
-            "summaryType": "mapping",
-            "normX": 0.75,
-            "normY": 0.45,
-            "labelSide": "right",
-            "labelOffX": 200,
-            "labelOffY": -45,
-        },
-    ],
-}
-
 MX_VERTICAL_LAYOUT = {
     "key": "mx_vertical",
     "label": "MX Vertical family",
@@ -276,7 +211,6 @@ MX_VERTICAL_LAYOUT = {
 DEVICE_LAYOUTS = {
     "mx_master": MX_MASTER_LAYOUT,
     "mx_anywhere": MX_ANYWHERE_LAYOUT,
-    "mx_anywhere_2s": MX_ANYWHERE_2S_LAYOUT,
     "mx_vertical": MX_VERTICAL_LAYOUT,
     "generic_mouse": GENERIC_MOUSE_LAYOUT,
     **LOGI_DEVICE_LAYOUTS,
@@ -290,6 +224,7 @@ _FAMILY_FALLBACKS = {
     "mx_master_3s": "mx_master",
     "mx_master_3": "mx_master",
     "mx_master_2s": "mx_master",
+    "mx_anywhere_2s": "mx_anywhere",
     "mx_anywhere_3s": "mx_anywhere",
     "mx_anywhere_3": "mx_anywhere",
 }
