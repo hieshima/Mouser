@@ -609,6 +609,10 @@ FEAT_REPROG_V4 = 0x1B04      # Reprogrammable Controls V4
 FEAT_ADJ_DPI   = 0x2201      # Adjustable DPI
 FEAT_SMART_SHIFT          = 0x2110  # Smart Shift basic
 FEAT_SMART_SHIFT_ENHANCED = 0x2111  # Smart Shift Enhanced (MX Master 3/3S, MX Master 4)
+FEAT_HIRES_WHEEL          = 0x2120
+FEAT_HIRES_WHEEL_ENHANCED = 0x2121
+FEAT_LOWRES_WHEEL         = 0x2130
+FEAT_THUMB_WHEEL          = 0x2150
 FEAT_UNIFIED_BATT   = 0x1004      # Unified Battery (preferred)
 FEAT_DEVICE_NAME    = 0x0005      # Device Name & Type
 FEAT_BATTERY_STATUS = 0x1000      # Battery Status (fallback)
@@ -733,6 +737,7 @@ class HidGestureListener:
         self._dpi_result  = None        # True/False after apply
         self._smart_shift_idx = None      # feature index of SMART_SHIFT / SMART_SHIFT_ENHANCED
         self._smart_shift_enhanced = False  # True → use fn 1/2; False → fn 0/1
+        self._wheel_feature_indexes = {}
         self._pending_smart_shift = None
         self._smart_shift_result = None
         self._smart_shift_call_lock = threading.Lock()
@@ -802,7 +807,32 @@ class HidGestureListener:
             )
         if self._battery_idx is not None and self._battery_feature_id is not None:
             feature_ids.append(self._battery_feature_id)
+        feature_ids.extend(sorted(self._wheel_feature_indexes))
         return tuple(feature_ids)
+
+    def _discovered_feature_inventory(self):
+        features = []
+        if self._feat_idx is not None:
+            features.append({"feature_id": FEAT_REPROG_V4, "index": self._feat_idx})
+        if self._dpi_idx is not None:
+            features.append({"feature_id": FEAT_ADJ_DPI, "index": self._dpi_idx})
+        if self._smart_shift_idx is not None:
+            features.append({
+                "feature_id": (
+                    FEAT_SMART_SHIFT_ENHANCED
+                    if self._smart_shift_enhanced
+                    else FEAT_SMART_SHIFT
+                ),
+                "index": self._smart_shift_idx,
+            })
+        if self._battery_idx is not None and self._battery_feature_id is not None:
+            features.append({
+                "feature_id": self._battery_feature_id,
+                "index": self._battery_idx,
+            })
+        for feature_id, index in sorted(self._wheel_feature_indexes.items()):
+            features.append({"feature_id": feature_id, "index": index})
+        return tuple(features)
 
     def dump_device_info(self):
         """Return a dict describing everything we know about the connected device.
@@ -828,6 +858,8 @@ class HidGestureListener:
             feat_name = (f"0x{self._battery_feature_id:04X}"
                          if self._battery_feature_id else "unknown")
             features[f"BATTERY ({feat_name})"] = f"index 0x{self._battery_idx:02X}"
+        for feature_id, index in sorted(self._wheel_feature_indexes.items()):
+            features[f"WHEEL (0x{feature_id:04X})"] = f"index 0x{index:02X}"
 
         controls = []
         for c in self._last_controls:
@@ -836,6 +868,9 @@ class HidGestureListener:
                 "cid": f"0x{c['cid']:04X}",
                 "task": f"0x{c['task']:04X}",
                 "flags": f"0x{c['flags']:04X}",
+                "position": c.get("pos"),
+                "group": c.get("group"),
+                "group_mask": f"0x{c.get('gmask', 0):02X}",
                 "mapped_to": f"0x{c['mapped_to']:04X}",
                 "mapping_flags": f"0x{c['mapping_flags']:04X}",
             })
@@ -1675,6 +1710,7 @@ class HidGestureListener:
             self._smart_shift_idx = None
             self._battery_idx = None
             self._battery_feature_id = None
+            self._wheel_feature_indexes = {}
             self._gesture_cid = DEFAULT_GESTURE_CID
             self._gesture_candidates = list(
                 getattr(device_spec, "gesture_cids", ()) or DEFAULT_GESTURE_CIDS
@@ -1683,6 +1719,7 @@ class HidGestureListener:
             opened_transport = None
             opened_up = int(up or 0)
             opened_usage = int(usage or 0)
+            opened_path = ""
             open_attempts = []
             # On macOS, prefer IOKit (non-exclusive access) over hidapi
             # which may lock the device and freeze the cursor.
@@ -1733,6 +1770,7 @@ class HidGestureListener:
                     opened_transport = open_info.get("transport") or transport
                     opened_up = int(open_info.get("usage_page", up) or 0)
                     opened_usage = int(open_info.get("usage", usage) or 0)
+                    opened_path = _device_path_display(open_info.get("path"))
                     print(f"[HidGesture] Opened PID=0x{pid:04X} via {transport}")
                     break
                 except Exception as exc:
@@ -1793,6 +1831,19 @@ class HidGestureListener:
                             self._smart_shift_idx = ss_fi
                             self._smart_shift_enhanced = False
                             print(f"[HidGesture] Found SMART_SHIFT (basic) @0x{ss_fi:02X}")
+                    for wheel_feature in (
+                        FEAT_HIRES_WHEEL,
+                        FEAT_HIRES_WHEEL_ENHANCED,
+                        FEAT_LOWRES_WHEEL,
+                        FEAT_THUMB_WHEEL,
+                    ):
+                        wheel_fi = self._find_feature(wheel_feature)
+                        if wheel_fi:
+                            self._wheel_feature_indexes[wheel_feature] = wheel_fi
+                            print(
+                                f"[HidGesture] Found wheel feature "
+                                f"0x{wheel_feature:04X} @0x{wheel_fi:02X}"
+                            )
                     batt_fi = self._find_feature(FEAT_UNIFIED_BATT)
                     if batt_fi:
                         self._battery_idx = batt_fi
@@ -1821,7 +1872,15 @@ class HidGestureListener:
                             reprog_controls=controls,
                             active_gesture_cid=self._gesture_cid,
                             gesture_rawxy_enabled=self._rawxy_enabled,
-                            discovered_features=self._discovered_feature_ids(),
+                            discovered_features=self._discovered_feature_inventory(),
+                            device_identity={
+                                "device_index": self._dev_idx,
+                                "usage_page": opened_up,
+                                "usage": opened_usage,
+                                "backend": transport,
+                                "hid_module": _HID_MODULE_NAME or "",
+                                "device_path": opened_path,
+                            },
                         )
                         return True
                     continue     # divert failed — try next receiver slot
@@ -1916,6 +1975,7 @@ class HidGestureListener:
             self._smart_shift_idx = None
             self._battery_idx = None
             self._battery_feature_id = None
+            self._wheel_feature_indexes = {}
             self._pending_battery = None
             self._pending_dpi = None
             self._dpi_result = None
