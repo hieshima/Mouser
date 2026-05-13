@@ -215,26 +215,29 @@ for alias, canonical in {**MODIFIER_ALIASES, **KEY_ALIASES}.items():
 
 
 class ShortcutParseError(ValueError):
-    pass
+    def __init__(self, message: str, *, code: str = "invalid", detail: str = ""):
+        super().__init__(message)
+        self.code = code
+        self.detail = detail
 
 
 def _normalize_token(token: str) -> tuple[tuple[str, ...], str]:
     raw = (token or "").strip()
     lowered = raw.casefold()
     if not lowered:
-        raise ShortcutParseError("Empty key segment")
+        raise ShortcutParseError("Empty key segment", code="empty_segment")
     if lowered in SHIFTED_SYMBOLS:
         return ("shift",), SHIFTED_SYMBOLS[lowered]
     canonical = ALIASES.get(lowered, lowered)
     if canonical not in KEYS_BY_NAME:
-        raise ShortcutParseError(f"Unknown key: {raw}")
+        raise ShortcutParseError(f"Unknown key: {raw}", code="unknown_key", detail=raw)
     return (), canonical
 
 
 def parse_shortcut_text(text: str, *, allow_modifier_only: bool = False) -> tuple[str, ...]:
     parts = [part.strip() for part in (text or "").split("+")]
     if not parts or all(not part for part in parts):
-        raise ShortcutParseError("Shortcut is empty")
+        raise ShortcutParseError("Shortcut is empty", code="empty")
 
     modifiers: list[str] = []
     key_name = ""
@@ -245,15 +248,22 @@ def parse_shortcut_text(text: str, *, allow_modifier_only: bool = False) -> tupl
                 modifiers.append(modifier)
         if canonical in MODIFIER_ORDER:
             if canonical in modifiers:
-                raise ShortcutParseError(f"Duplicate key: {canonical}")
+                raise ShortcutParseError(
+                    f"Duplicate key: {canonical}",
+                    code="duplicate_key",
+                    detail=canonical,
+                )
             modifiers.append(canonical)
             continue
         if key_name:
-            raise ShortcutParseError("Use exactly one non-modifier key")
+            raise ShortcutParseError(
+                "Use exactly one non-modifier key",
+                code="multiple_main_keys",
+            )
         key_name = canonical
 
     if not key_name and not allow_modifier_only:
-        raise ShortcutParseError("Need at least one non-modifier key")
+        raise ShortcutParseError("Need at least one non-modifier key", code="missing_main_key")
 
     ordered_modifiers = [name for name in MODIFIER_ORDER if name in modifiers]
     if key_name:
@@ -261,8 +271,32 @@ def parse_shortcut_text(text: str, *, allow_modifier_only: bool = False) -> tupl
     return tuple(ordered_modifiers)
 
 
-def canonical_shortcut_text(text: str, *, allow_modifier_only: bool = False) -> str:
-    return "+".join(parse_shortcut_text(text, allow_modifier_only=allow_modifier_only))
+def validate_shortcut_supported(parts, platform_name: str) -> tuple[str, ...]:
+    """Return canonical parts if every key can be synthesized on platform_name."""
+    canonical_parts = tuple(parts)
+    for name in canonical_parts:
+        spec = KEYS_BY_NAME.get(name)
+        if spec is None:
+            raise ShortcutParseError(f"Unknown key: {name}", code="unknown_key", detail=name)
+        if spec.code_for(platform_name) is None:
+            raise ShortcutParseError(
+                f"Key is not supported on this platform: {spec.label}",
+                code="unsupported_key",
+                detail=spec.label,
+            )
+    return canonical_parts
+
+
+def canonical_shortcut_text(
+    text: str,
+    *,
+    allow_modifier_only: bool = False,
+    platform_name: str | None = None,
+) -> str:
+    parts = parse_shortcut_text(text, allow_modifier_only=allow_modifier_only)
+    if platform_name:
+        parts = validate_shortcut_supported(parts, platform_name)
+    return "+".join(parts)
 
 
 def is_reserved_risky_shortcut(
@@ -323,7 +357,10 @@ def valid_key_names(platform_name: str) -> list[str]:
         names.update(alias.casefold() for alias in spec.aliases)
     names.update(MODIFIER_ALIASES)
     names.update(KEY_ALIASES)
-    names.update(SHIFTED_SYMBOLS)
+    for symbol, canonical in SHIFTED_SYMBOLS.items():
+        spec = KEYS_BY_NAME.get(canonical)
+        if spec is not None and spec.code_for(platform_name) is not None:
+            names.add(symbol)
     return sorted(names)
 
 

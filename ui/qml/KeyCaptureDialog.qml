@@ -50,9 +50,11 @@ Rectangle {
         }
         var canonical = backend.canonicalizeCustomShortcut(text)
         if (!canonical) {
+            var reason = dialog._validationErrorText(
+                        backend.customShortcutValidationErrorInfo(text))
             _valid = false
             _canonical = ""
-            _preview = "\u2718 Invalid shortcut"
+            _preview = "\u2718 " + (reason || "Invalid shortcut")
             _warning = ""
             return
         }
@@ -89,17 +91,18 @@ Rectangle {
             || lowered === "win" || lowered === "windows") {
             lowered = "super"
         }
-        if (lowered === "super")
-            return "Super"
-        if (lowered === "alt")
-            return Qt.platform.os === "osx" ? "Opt" : "Alt"
-        if (lowered === "ctrl")
-            return "Ctrl"
-        if (lowered === "shift")
-            return "Shift"
         if (lowered.length === 1)
             return lowered.toUpperCase()
         return backend.displayShortcutKeyName(lowered)
+    }
+
+    function _validationErrorText(info) {
+        var code = info && info.code ? info.code : "unsupported"
+        var detail = info && info.detail ? info.detail : ""
+        var template = s["key_capture.error." + code]
+                       || s["key_capture.error.unsupported"]
+                       || "Shortcut is not supported."
+        return detail ? template.replace("%1", detail) : template.replace("%1", "")
     }
 
     function _comboFromEvent(event) {
@@ -167,6 +170,9 @@ Rectangle {
 
             Text {
                 text: dialog._preview
+                width: parent.width
+                wrapMode: Text.WordWrap
+                textFormat: Text.PlainText
                 font { family: uiState.fontFamily; pixelSize: 12 }
                 color: dialog._valid ? "#4caf50" : "#f44336"
                 visible: dialog._preview !== ""

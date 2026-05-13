@@ -15,8 +15,9 @@ from core import key_registry
 # Custom shortcut helpers (shared across platforms)
 # ==================================================================
 
-def custom_action_label(action_id):
+def custom_action_label(action_id, platform_name=None):
     """Convert 'custom:ctrl+shift+a' → 'Ctrl + Shift + A'."""
+    platform_name = platform_name or sys.platform
     if not action_id.startswith("custom:"):
         return action_id
     try:
@@ -26,7 +27,10 @@ def custom_action_label(action_id):
         )
     except key_registry.ShortcutParseError:
         parts = [part for part in action_id[7:].split("+") if part]
-    return " + ".join(_pretty_custom_key_name(p) for p in parts)
+    return " + ".join(
+        _pretty_custom_key_name(p, platform_name=platform_name)
+        for p in parts
+    )
 
 
 def valid_custom_key_names():
@@ -64,9 +68,12 @@ def _build_custom_key_name_map(base_map):
     return key_registry.build_key_name_to_code_map(base_map, sys.platform)
 
 
-def _pretty_custom_key_name(name):
+def _pretty_custom_key_name(name, platform_name=None):
     try:
-        return key_registry.pretty_key_name(name)
+        return key_registry.pretty_key_name(
+            name,
+            platform_name=platform_name or sys.platform,
+        )
     except key_registry.ShortcutParseError:
         return name.strip().capitalize()
 

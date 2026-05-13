@@ -970,9 +970,28 @@ class Backend(QObject):
     @Slot(str, result=str)
     def canonicalizeCustomShortcut(self, text):
         try:
-            return canonical_shortcut_text(text, allow_modifier_only=False)
+            return canonical_shortcut_text(
+                text,
+                allow_modifier_only=False,
+                platform_name=sys.platform,
+            )
         except ShortcutParseError:
             return ""
+
+    @Slot(str, result="QVariantMap")
+    def customShortcutValidationErrorInfo(self, text):
+        try:
+            canonical_shortcut_text(
+                text,
+                allow_modifier_only=False,
+                platform_name=sys.platform,
+            )
+        except ShortcutParseError as exc:
+            return {
+                "code": getattr(exc, "code", "") or "unsupported",
+                "detail": getattr(exc, "detail", "") or "",
+            }
+        return {}
 
     @Slot(str, result=bool)
     def isReservedCustomShortcut(self, text):

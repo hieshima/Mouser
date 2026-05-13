@@ -176,13 +176,26 @@ class MacOSZoomActionTests(unittest.TestCase):
 
 
 class CustomShortcutCaptureTests(unittest.TestCase):
-    def test_custom_action_label_uses_super_as_canonical_name(self):
+    def test_custom_action_label_uses_platform_display_names(self):
         self.assertEqual(
-            key_simulator.custom_action_label("custom:cmd+w"),
-            "Super + W",
+            key_simulator.custom_action_label(
+                "custom:cmd+w",
+                platform_name="darwin",
+            ),
+            "Cmd + W",
         )
         self.assertEqual(
-            key_simulator.custom_action_label("custom:super+w"),
+            key_simulator.custom_action_label(
+                "custom:super+w",
+                platform_name="win32",
+            ),
+            "Win + W",
+        )
+        self.assertEqual(
+            key_simulator.custom_action_label(
+                "custom:super+w",
+                platform_name="linux",
+            ),
             "Super + W",
         )
 

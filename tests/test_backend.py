@@ -486,6 +486,23 @@ class BackendDeviceLayoutTests(unittest.TestCase):
         self.assertTrue(backend.isReservedCustomShortcut("Win+Shift+S"))
         self.assertFalse(backend.isReservedCustomShortcut("Ctrl+Shift+P"))
 
+    def test_custom_shortcut_validation_error_info_explains_parse_failure(self):
+        backend = self._make_backend()
+
+        self.assertEqual(backend.customShortcutValidationErrorInfo("Ctrl+Shift+P"), {})
+        self.assertEqual(
+            backend.customShortcutValidationErrorInfo("Ctrl+A+B"),
+            {"code": "multiple_main_keys", "detail": ""},
+        )
+        self.assertEqual(
+            backend.customShortcutValidationErrorInfo("Ctrl++"),
+            {"code": "empty_segment", "detail": ""},
+        )
+        self.assertEqual(
+            backend.customShortcutValidationErrorInfo("Ctrl+Hyperdrive"),
+            {"code": "unknown_key", "detail": "Hyperdrive"},
+        )
+
     def test_add_profile_stores_catalog_id_for_linux_app(self):
         backend = self._make_backend()
         fake_catalog = [

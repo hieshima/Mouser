@@ -67,6 +67,32 @@ class KeyRegistryParsingTests(unittest.TestCase):
         self.assertIn(";", names)
         self.assertIn("insert", names)
 
+    def test_platform_support_validation_rejects_unsupported_keys(self):
+        self.assertEqual(
+            key_registry.canonical_shortcut_text("F20", platform_name="darwin"),
+            "f20",
+        )
+        with self.assertRaisesRegex(
+            key_registry.ShortcutParseError,
+            "Key is not supported on this platform: F24",
+        ) as ctx:
+            key_registry.canonical_shortcut_text("F24", platform_name="darwin")
+        self.assertEqual(ctx.exception.code, "unsupported_key")
+        self.assertEqual(ctx.exception.detail, "F24")
+
+        self.assertEqual(
+            key_registry.canonical_shortcut_text("F24", platform_name="win32"),
+            "f24",
+        )
+
+    def test_valid_names_omit_platform_unsupported_keys(self):
+        macos = set(key_registry.valid_key_names("darwin"))
+        windows = set(key_registry.valid_key_names("win32"))
+
+        self.assertIn("f20", macos)
+        self.assertNotIn("f24", macos)
+        self.assertIn("f24", windows)
+
     def test_reserved_shortcuts_warn_but_still_parse(self):
         self.assertEqual(
             key_registry.canonical_shortcut_text("Win+Shift+S"),
@@ -78,6 +104,13 @@ class KeyRegistryParsingTests(unittest.TestCase):
 
     def test_regular_shortcuts_do_not_warn(self):
         self.assertFalse(key_registry.is_reserved_risky_shortcut("Ctrl+Shift+P"))
+
+    def test_pretty_modifier_names_are_platform_aware(self):
+        self.assertEqual(key_registry.pretty_key_name("super", platform_name="darwin"), "Cmd")
+        self.assertEqual(key_registry.pretty_key_name("super", platform_name="win32"), "Win")
+        self.assertEqual(key_registry.pretty_key_name("super", platform_name="linux"), "Super")
+        self.assertEqual(key_registry.pretty_key_name("alt", platform_name="darwin"), "Opt")
+        self.assertEqual(key_registry.pretty_key_name("alt", platform_name="linux"), "Alt")
 
 
 if __name__ == "__main__":
