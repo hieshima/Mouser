@@ -119,9 +119,11 @@ def _qt_shortcut_key_name(key, text=""):
     if len(text) == 1:
         lowered = text.lower()
         try:
-            return canonical_shortcut_text(lowered, allow_modifier_only=False)
+            canonical_shortcut_text(lowered, allow_modifier_only=False)
         except ShortcutParseError:
             pass
+        else:
+            return lowered
     return ""
 
 

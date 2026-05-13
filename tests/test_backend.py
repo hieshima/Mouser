@@ -467,6 +467,19 @@ class BackendDeviceLayoutTests(unittest.TestCase):
                 "ctrl+f24",
             )
 
+    def test_shortcut_capture_accepts_shifted_symbol_text(self):
+        backend = self._make_backend()
+
+        with patch("ui.backend.sys.platform", "win32"):
+            self.assertEqual(
+                backend.shortcutComboFromQtEvent(
+                    Qt.Key_Comma,
+                    Qt.ControlModifier | Qt.ShiftModifier,
+                    "<",
+                ),
+                "ctrl+shift+comma",
+            )
+
     def test_reserved_custom_shortcut_warning_slot(self):
         backend = self._make_backend()
 
