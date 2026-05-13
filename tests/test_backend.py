@@ -71,9 +71,10 @@ class _FakeEngine:
 
 @unittest.skipIf(Backend is None, "PySide6 not installed in test environment")
 class BackendDeviceLayoutTests(unittest.TestCase):
-    def _make_backend(self, engine=None, root_dir=None):
+    def _make_backend(self, engine=None, root_dir=None, cfg=None):
+        loaded_config = copy.deepcopy(cfg or DEFAULT_CONFIG)
         with (
-            patch("ui.backend.load_config", return_value=copy.deepcopy(DEFAULT_CONFIG)),
+            patch("ui.backend.load_config", return_value=loaded_config),
             patch("ui.backend.save_config"),
             patch("ui.backend.supports_login_startup", return_value=False),
         ):
@@ -127,6 +128,34 @@ class BackendDeviceLayoutTests(unittest.TestCase):
         self.assertEqual(hscroll_hotspots[0]["buttonKey"], "hscroll_left")
         self.assertEqual(hscroll_hotspots[0]["summaryType"], "hscroll")
         self.assertTrue(hscroll_hotspots[0]["isHScroll"])
+
+    def test_update_checks_disabled_do_not_start_timer(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg.setdefault("settings", {})["check_for_updates"] = False
+
+        backend = self._make_backend(cfg=cfg)
+
+        self.assertFalse(backend.checkForUpdates)
+        self.assertFalse(backend._update_timer.isActive())
+
+    def test_disabled_automatic_update_check_does_not_start_thread(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg.setdefault("settings", {})["check_for_updates"] = False
+        backend = self._make_backend(cfg=cfg)
+
+        with patch("ui.backend.threading.Thread") as thread_cls:
+            backend._startUpdateCheck(manual=False)
+
+        thread_cls.assert_not_called()
+        self.assertFalse(backend._update_check_in_progress)
+
+    def test_manual_update_check_triggers_immediate_fetch(self):
+        backend = self._make_backend()
+
+        with patch.object(backend, "_startUpdateCheck") as start_check:
+            backend.manualCheckForUpdates()
+
+        start_check.assert_called_once_with(manual=True)
 
     def test_disconnected_override_request_does_not_persist(self):
         backend = self._make_backend()

@@ -107,6 +107,7 @@ DEFAULT_CONFIG = {
         "device_layout_overrides": {},
         "language": "en",
         "ignore_trackpad": True,
+        "check_for_updates": True,
     },
 }
 
@@ -333,6 +334,7 @@ def _migrate(cfg):
     cfg["settings"].setdefault("device_layout_overrides", {})
     cfg["settings"].setdefault("language", "en")
     cfg["settings"].setdefault("ignore_trackpad", True)
+    cfg["settings"].setdefault("check_for_updates", True)
 
     # Always migrate old wmplayer.exe → Microsoft.Media.Player.exe in profile apps
     for pdata in cfg.get("profiles", {}).values():

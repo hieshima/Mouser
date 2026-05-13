@@ -760,6 +760,56 @@ Item {
                             }
                         }
                     }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 62
+                        radius: 10
+                        color: scrollPage.theme.bgSubtle
+
+                        RowLayout {
+                            anchors {
+                                fill: parent
+                                leftMargin: 16
+                                rightMargin: 16
+                            }
+                            spacing: 12
+
+                            Column {
+                                Layout.fillWidth: true
+                                spacing: 3
+
+                                Text {
+                                    text: s["scroll.check_for_updates"]
+                                    font {
+                                        family: uiState.fontFamily
+                                        pixelSize: 13
+                                    }
+                                    color: scrollPage.theme.textPrimary
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    text: s["scroll.check_for_updates_desc"]
+                                    font {
+                                        family: uiState.fontFamily
+                                        pixelSize: 11
+                                    }
+                                    color: scrollPage.theme.textSecondary
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+
+                            Switch {
+                                id: checkUpdatesSwitch
+                                checked: backend.checkForUpdates
+                                focusPolicy: Qt.StrongFocus
+                                Material.accent: scrollPage.theme.accent
+                                Accessible.name: s["scroll.check_for_updates"]
+                                onClicked: backend.setCheckForUpdates(checked)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -989,6 +1039,7 @@ Item {
                 startAtLoginSwitch.checked = backend.startAtLogin
                 startMinimizedSwitch.checked = backend.startMinimized
             }
+            checkUpdatesSwitch.checked = backend.checkForUpdates
             vscrollSwitch.checked = backend.invertVScroll
             hscrollSwitch.checked = backend.invertHScroll
             ignoreTrackpadSwitch.checked = backend.ignoreTrackpad

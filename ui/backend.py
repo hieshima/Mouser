@@ -6,7 +6,9 @@ Exposes properties, signals, and slots for two-way data binding.
 import os
 import re
 import sys
+import threading
 import time
+import webbrowser
 
 from PySide6.QtCore import QMetaObject, QObject, Property, QTimer, Signal, Slot, Qt, QUrl
 
@@ -42,6 +44,8 @@ from core.startup import (
     supports_login_startup,
     sync_from_config as sync_login_startup_from_config,
 )
+from core.updater import DEFAULT_RELEASE_REPO, fetch_latest_release, is_newer
+from core.version import APP_VERSION
 
 
 def _action_label(action_id):
@@ -144,6 +148,21 @@ def _qt_shortcut_combo(key, modifiers, text=""):
     return normalize_captured_shortcut_parts(parts, key_name)
 
 
+def _open_url(url: str) -> bool:
+    """Open a URL without importing QtGui during backend module import."""
+    if not url:
+        return False
+    qurl = QUrl(url)
+    try:
+        from PySide6.QtGui import QDesktopServices
+
+        if QDesktopServices.openUrl(qurl):
+            return True
+    except Exception:
+        pass
+    return bool(webbrowser.open(qurl.toString()))
+
+
 class Backend(QObject):
     """QML-exposed backend that bridges the engine and configuration."""
 
@@ -165,6 +184,7 @@ class Backend(QObject):
     deviceInfoChanged = Signal()
     deviceLayoutChanged = Signal()
     knownAppsChanged = Signal()
+    updateAvailable = Signal(str, str)
 
     # Internal cross-thread signals
     _profileSwitchRequest = Signal(str)
@@ -175,6 +195,8 @@ class Backend(QObject):
     _gestureEventRequest = Signal(object)
     _smartShiftReadRequest = Signal()
     _statusMessageRequest = Signal(str)
+    _updateAvailableRequest = Signal(str, str, bool)
+    _updateCheckFinishedRequest = Signal(bool, bool)
 
     def __init__(self, engine=None, parent=None, root_dir=None):
         super().__init__(parent)
@@ -209,6 +231,12 @@ class Backend(QObject):
         self._effective_supported_buttons = None  # set by _apply_device_layout
         self._connected_device_refresh_pending = False
         self._connected_device_refresh_attempts = 0
+        self._latest_update_url = ""
+        self._latest_update_version = ""
+        self._update_check_in_progress = False
+        self._update_timer = QTimer(self)
+        self._update_timer.setInterval(24 * 60 * 60 * 1000)
+        self._update_timer.timeout.connect(lambda: self._startUpdateCheck(manual=False))
 
         # Cross-thread signal connections
         self._profileSwitchRequest.connect(
@@ -227,6 +255,10 @@ class Backend(QObject):
             self._handleSmartShiftRead, Qt.QueuedConnection)
         self._statusMessageRequest.connect(
             self._handleStatusMessage, Qt.QueuedConnection)
+        self._updateAvailableRequest.connect(
+            self._handleUpdateAvailable, Qt.QueuedConnection)
+        self._updateCheckFinishedRequest.connect(
+            self._handleUpdateCheckFinished, Qt.QueuedConnection)
 
         # Wire engine callbacks
         if engine:
@@ -257,6 +289,7 @@ class Backend(QObject):
         else:
             self._cfg.setdefault("settings", {})["start_at_login"] = False
         self._sync_connected_device_info()
+        self._configureUpdateChecks()
 
     # ── Properties ─────────────────────────────────────────────
 
@@ -431,6 +464,10 @@ class Backend(QObject):
     @Property(bool, notify=settingsChanged)
     def debugMode(self):
         return bool(self._cfg.get("settings", {}).get("debug_mode", False))
+
+    @Property(bool, notify=settingsChanged)
+    def checkForUpdates(self):
+        return bool(self._cfg.get("settings", {}).get("check_for_updates", True))
 
     @Property(bool, notify=debugEventsEnabledChanged)
     def debugEventsEnabled(self):
@@ -643,6 +680,58 @@ class Backend(QObject):
             return catalog_id
         return entry.get("path") or fallback_spec
 
+    def _configureUpdateChecks(self):
+        if self.checkForUpdates:
+            if not self._update_timer.isActive():
+                self._update_timer.start()
+            QTimer.singleShot(3000, lambda: self._startUpdateCheck(manual=False))
+        else:
+            self._update_timer.stop()
+
+    def _startUpdateCheck(self, manual=False):
+        if not manual and not self.checkForUpdates:
+            return
+        if self._update_check_in_progress:
+            if manual:
+                self.statusMessage.emit("Update check already running")
+            return
+        self._update_check_in_progress = True
+        if manual:
+            self.statusMessage.emit("Checking for updates...")
+
+        thread = threading.Thread(
+            target=self._runUpdateCheck,
+            args=(bool(manual),),
+            name="MouserUpdateCheck",
+            daemon=True,
+        )
+        thread.start()
+
+    def _runUpdateCheck(self, manual=False):
+        release = fetch_latest_release(DEFAULT_RELEASE_REPO, timeout=5.0)
+        if release and is_newer(APP_VERSION, release.tag_name):
+            version = release.tag_name[1:] if release.tag_name.startswith("v") else release.tag_name
+            self._updateAvailableRequest.emit(version, release.html_url, bool(manual))
+            return
+        self._updateCheckFinishedRequest.emit(bool(manual), release is not None)
+
+    @Slot(str, str, bool)
+    def _handleUpdateAvailable(self, version, url, manual):
+        self._update_check_in_progress = False
+        self._latest_update_version = str(version or "")
+        self._latest_update_url = str(url or "")
+        self.updateAvailable.emit(self._latest_update_version, self._latest_update_url)
+        self.statusMessage.emit(f"Mouser {self._latest_update_version} is available")
+
+    @Slot(bool, bool)
+    def _handleUpdateCheckFinished(self, manual, reachable):
+        self._update_check_in_progress = False
+        if manual:
+            if reachable:
+                self.statusMessage.emit("Mouser is up to date")
+            else:
+                self.statusMessage.emit("Could not check for updates")
+
     # ── Slots ──────────────────────────────────────────────────
 
     @Slot(str, str)
@@ -674,6 +763,28 @@ class Backend(QObject):
         save_config(self._cfg)
         self.settingsChanged.emit()
         self.statusMessage.emit("Saved")
+
+    @Slot(bool)
+    def setCheckForUpdates(self, value):
+        enabled = bool(value)
+        if self.checkForUpdates == enabled:
+            return
+        self._cfg.setdefault("settings", {})["check_for_updates"] = enabled
+        save_config(self._cfg)
+        self.settingsChanged.emit()
+        self._configureUpdateChecks()
+        self.statusMessage.emit("Saved")
+
+    @Slot()
+    def manualCheckForUpdates(self):
+        self._startUpdateCheck(manual=True)
+
+    @Slot()
+    def openLatestReleasePage(self):
+        url = self._latest_update_url or (
+            f"https://github.com/{DEFAULT_RELEASE_REPO}/releases/latest"
+        )
+        _open_url(url)
 
     @Slot(bool)
     def setStartAtLogin(self, value):

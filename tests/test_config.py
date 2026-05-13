@@ -56,6 +56,7 @@ class ConfigMigrationTests(unittest.TestCase):
         self.assertFalse(migrated["settings"]["debug_mode"])
         self.assertEqual(migrated["settings"]["device_layout_overrides"], {})
         self.assertTrue(migrated["settings"]["ignore_trackpad"])
+        self.assertTrue(migrated["settings"]["check_for_updates"])
         self.assertFalse(migrated["settings"]["start_at_login"])
         self.assertNotIn("start_with_windows", migrated["settings"])
         self.assertEqual(
@@ -95,6 +96,7 @@ class ConfigMigrationTests(unittest.TestCase):
         self.assertFalse(migrated["settings"]["debug_mode"])
         self.assertEqual(migrated["settings"]["device_layout_overrides"], {})
         self.assertTrue(migrated["settings"]["ignore_trackpad"])
+        self.assertTrue(migrated["settings"]["check_for_updates"])
         self.assertFalse(migrated["settings"]["start_at_login"])
         self.assertNotIn("start_with_windows", migrated["settings"])
 
@@ -134,6 +136,7 @@ class ConfigMigrationTests(unittest.TestCase):
         self.assertFalse(loaded["settings"]["debug_mode"])
         self.assertEqual(loaded["settings"]["device_layout_overrides"], {})
         self.assertTrue(loaded["settings"]["ignore_trackpad"])
+        self.assertTrue(loaded["settings"]["check_for_updates"])
         self.assertEqual(loaded["profiles"]["default"]["mappings"]["middle"], "copy")
         self.assertEqual(
             loaded["profiles"]["default"]["mappings"]["xbutton1"], "alt_tab"
