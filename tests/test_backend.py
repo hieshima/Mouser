@@ -157,6 +157,26 @@ class BackendDeviceLayoutTests(unittest.TestCase):
 
         start_check.assert_called_once_with(manual=True)
 
+    def test_update_check_result_persists_state_on_main_thread(self):
+        backend = self._make_backend()
+        state = {
+            "last_check": 10.0,
+            "etag": '"abc"',
+            "last_modified": "Wed, 13 May 2026 00:00:00 GMT",
+            "backoff_until": 0.0,
+            "last_seen_latest_version": "v3.7.1",
+            "skipped_version": "",
+        }
+
+        with patch("ui.backend.save_config") as save_config:
+            backend._handleUpdateCheckFinished(False, True, state)
+
+        self.assertEqual(
+            backend._cfg["settings"]["update_check_state"]["etag"], '"abc"'
+        )
+        self.assertEqual(backend._update_state.last_seen_latest_version, "v3.7.1")
+        save_config.assert_called_once_with(backend._cfg)
+
     def test_disconnected_override_request_does_not_persist(self):
         backend = self._make_backend()
         backend._connected_device_key = "mx_master_3"

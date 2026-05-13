@@ -44,7 +44,13 @@ from core.startup import (
     supports_login_startup,
     sync_from_config as sync_login_startup_from_config,
 )
-from core.updater import DEFAULT_RELEASE_REPO, fetch_latest_release, is_newer
+from core.updater import (
+    DEFAULT_AUTO_CHECK_INTERVAL_SECONDS,
+    DEFAULT_RELEASE_REPO,
+    UpdateCheckState,
+    check_latest_release,
+    is_newer,
+)
 from core.version import APP_VERSION
 
 
@@ -195,8 +201,8 @@ class Backend(QObject):
     _gestureEventRequest = Signal(object)
     _smartShiftReadRequest = Signal()
     _statusMessageRequest = Signal(str)
-    _updateAvailableRequest = Signal(str, str, bool)
-    _updateCheckFinishedRequest = Signal(bool, bool)
+    _updateAvailableRequest = Signal(str, str, bool, object)
+    _updateCheckFinishedRequest = Signal(bool, bool, object)
 
     def __init__(self, engine=None, parent=None, root_dir=None):
         super().__init__(parent)
@@ -234,8 +240,11 @@ class Backend(QObject):
         self._latest_update_url = ""
         self._latest_update_version = ""
         self._update_check_in_progress = False
+        self._update_state = UpdateCheckState.from_dict(
+            self._cfg.get("settings", {}).get("update_check_state", {})
+        )
         self._update_timer = QTimer(self)
-        self._update_timer.setInterval(24 * 60 * 60 * 1000)
+        self._update_timer.setInterval(DEFAULT_AUTO_CHECK_INTERVAL_SECONDS * 1000)
         self._update_timer.timeout.connect(lambda: self._startUpdateCheck(manual=False))
 
         # Cross-thread signal connections
@@ -701,31 +710,57 @@ class Backend(QObject):
 
         thread = threading.Thread(
             target=self._runUpdateCheck,
-            args=(bool(manual),),
+            args=(bool(manual), self._update_state),
             name="MouserUpdateCheck",
             daemon=True,
         )
         thread.start()
 
-    def _runUpdateCheck(self, manual=False):
-        release = fetch_latest_release(DEFAULT_RELEASE_REPO, timeout=5.0)
+    def _runUpdateCheck(self, manual=False, state=None):
+        result = check_latest_release(
+            DEFAULT_RELEASE_REPO,
+            timeout=5.0,
+            state=state,
+            manual=bool(manual),
+        )
+        release = result.release
+        state_data = result.state.to_dict()
         if release and is_newer(APP_VERSION, release.tag_name):
-            version = release.tag_name[1:] if release.tag_name.startswith("v") else release.tag_name
-            self._updateAvailableRequest.emit(version, release.html_url, bool(manual))
+            version = (
+                release.tag_name[1:]
+                if release.tag_name.startswith("v")
+                else release.tag_name
+            )
+            self._updateAvailableRequest.emit(
+                version, release.html_url, bool(manual), state_data
+            )
             return
-        self._updateCheckFinishedRequest.emit(bool(manual), release is not None)
+        self._updateCheckFinishedRequest.emit(
+            bool(manual),
+            bool(result.reachable or result.not_modified or result.throttled),
+            state_data,
+        )
 
-    @Slot(str, str, bool)
-    def _handleUpdateAvailable(self, version, url, manual):
+    def _persistUpdateCheckState(self, state_data):
+        self._update_state = UpdateCheckState.from_dict(state_data)
+        self._cfg.setdefault("settings", {})["update_check_state"] = (
+            self._update_state.to_dict()
+        )
+        save_config(self._cfg)
+
+    @Slot(str, str, bool, object)
+    def _handleUpdateAvailable(self, version, url, manual, state_data):
         self._update_check_in_progress = False
+        self._persistUpdateCheckState(state_data)
         self._latest_update_version = str(version or "")
         self._latest_update_url = str(url or "")
         self.updateAvailable.emit(self._latest_update_version, self._latest_update_url)
         self.statusMessage.emit(f"Mouser {self._latest_update_version} is available")
 
-    @Slot(bool, bool)
-    def _handleUpdateCheckFinished(self, manual, reachable):
+    @Slot(bool, bool, object)
+    def _handleUpdateCheckFinished(self, manual, reachable, state_data):
         self._update_check_in_progress = False
+        self._persistUpdateCheckState(state_data)
         if manual:
             if reachable:
                 self.statusMessage.emit("Mouser is up to date")
