@@ -148,6 +148,7 @@ _TRANSLATIONS = {
         "key_capture.title": "Custom Shortcut",
         "key_capture.placeholder": "e.g. super+shift+f5",
         "key_capture.valid_keys": "Valid keys: ctrl/control, shift, alt/option/opt, super (aliases: cmd, command, meta, win, windows),\n0\u20139, a\u2013z, f1\u2013f12, space, tab, enter, esc, left, right, up, down, delete, ...",
+        "key_capture.reserved_warning": "The operating system may intercept this shortcut. It can still be saved, but behavior may vary by system.",
         "key_capture.cancel": "Cancel",
         "key_capture.confirm": "Confirm",
 
@@ -315,6 +316,7 @@ _TRANSLATIONS = {
         "key_capture.title": "\u81ea\u5b9a\u4e49\u5feb\u6377\u952e",
         "key_capture.placeholder": "\u4f8b\u5982\uff1asuper+shift+f5",
         "key_capture.valid_keys": "\u6709\u6548\u6309\u952e\uff1actrl/control\u3001shift\u3001alt/option/opt\u3001super\uff08\u522b\u540d\uff1acmd\u3001command\u3001meta\u3001win\u3001windows\uff09\u30010\u20139\u3001a\u2013z\u3001f1\u2013f12\u3001\nspace\u3001tab\u3001enter\u3001esc\u3001left\u3001right\u3001up\u3001down\u3001delete\u2026\u2026",
+        "key_capture.reserved_warning": "\u64cd\u4f5c\u7cfb\u7edf\u53ef\u80fd\u4f1a\u622a\u83b7\u8fd9\u4e2a\u5feb\u6377\u952e\u3002\u4ecd\u53ef\u4ee5\u4fdd\u5b58\uff0c\u4f46\u5177\u4f53\u884c\u4e3a\u53ef\u80fd\u56e0\u7cfb\u7edf\u800c\u5f02\u3002",
         "key_capture.cancel": "\u53d6\u6d88",
         "key_capture.confirm": "\u786e\u8ba4",
 
@@ -477,6 +479,7 @@ _TRANSLATIONS = {
         "key_capture.title": "\u81ea\u8a02\u5feb\u901f\u9375",
         "key_capture.placeholder": "\u4f8b\u5982\uff1asuper+shift+f5",
         "key_capture.valid_keys": "\u6709\u6548\u6309\u9375\uff1actrl/control\u3001shift\u3001alt/option/opt\u3001super\uff08\u5225\u540d\uff1acmd\u3001command\u3001meta\u3001win\u3001windows\uff09\u30010\u20139\u3001a\u2013z\u3001f1\u2013f12\u3001\nspace\u3001tab\u3001enter\u3001esc\u3001left\u3001right\u3001up\u3001down\u3001delete\u2026\u2026",
+        "key_capture.reserved_warning": "\u64cd\u4f5c\u7cfb\u7d71\u53ef\u80fd\u6703\u622a\u7372\u6b64\u5feb\u901f\u9375\u3002\u4ecd\u53ef\u4ee5\u5132\u5b58\uff0c\u4f46\u884c\u70ba\u53ef\u80fd\u56e0\u7cfb\u7d71\u800c\u7570\u3002",
         "key_capture.cancel": "\u53d6\u6d88",
         "key_capture.confirm": "\u78ba\u8a8d",
 

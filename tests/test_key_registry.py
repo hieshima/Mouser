@@ -67,6 +67,18 @@ class KeyRegistryParsingTests(unittest.TestCase):
         self.assertIn(";", names)
         self.assertIn("insert", names)
 
+    def test_reserved_shortcuts_warn_but_still_parse(self):
+        self.assertEqual(
+            key_registry.canonical_shortcut_text("Win+Shift+S"),
+            "shift+super+s",
+        )
+        self.assertTrue(key_registry.is_reserved_risky_shortcut("Win+Shift+S"))
+        self.assertTrue(key_registry.is_reserved_risky_shortcut("Ctrl+Alt+Delete"))
+        self.assertTrue(key_registry.is_reserved_risky_shortcut("Cmd+Space"))
+
+    def test_regular_shortcuts_do_not_warn(self):
+        self.assertFalse(key_registry.is_reserved_risky_shortcut("Ctrl+Shift+P"))
+
 
 if __name__ == "__main__":
     unittest.main()

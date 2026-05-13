@@ -50,6 +50,18 @@ KEY_ALIASES = {
     "]": "rightbracket",
 }
 
+RESERVED_RISKY_SHORTCUTS = frozenset(
+    {
+        ("ctrl", "alt", "delete"),
+        ("shift", "super", "s"),
+        ("alt", "tab"),
+        ("alt", "f4"),
+        ("super", "space"),
+        ("super", "tab"),
+        ("shift", "super", "5"),
+    }
+)
+
 SHIFTED_SYMBOLS = {
     "!": "1",
     "@": "2",
@@ -251,6 +263,17 @@ def parse_shortcut_text(text: str, *, allow_modifier_only: bool = False) -> tupl
 
 def canonical_shortcut_text(text: str, *, allow_modifier_only: bool = False) -> str:
     return "+".join(parse_shortcut_text(text, allow_modifier_only=allow_modifier_only))
+
+
+def is_reserved_risky_shortcut(
+    text: str,
+    *,
+    allow_modifier_only: bool = False,
+) -> bool:
+    return (
+        parse_shortcut_text(text, allow_modifier_only=allow_modifier_only)
+        in RESERVED_RISKY_SHORTCUTS
+    )
 
 
 def normalize_shortcut_parts(modifier_names, key_name="", *, platform_name=None) -> str:

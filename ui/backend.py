@@ -18,6 +18,12 @@ from core.config import (
 )
 from core import app_catalog
 from core.device_layouts import get_device_layout, get_manual_layout_choices
+from core.key_registry import (
+    ShortcutParseError,
+    canonical_shortcut_text,
+    is_reserved_risky_shortcut,
+    pretty_key_name,
+)
 from core.logi_devices import (
     DEFAULT_DPI_MAX,
     DEFAULT_DPI_MIN,
@@ -31,7 +37,6 @@ from core.key_simulator import (
     normalize_captured_shortcut_parts,
     valid_custom_key_names,
 )
-from core.key_registry import ShortcutParseError, canonical_shortcut_text, pretty_key_name
 from core.startup import (
     apply_login_startup,
     supports_login_startup,
@@ -966,6 +971,13 @@ class Backend(QObject):
             return canonical_shortcut_text(text, allow_modifier_only=False)
         except ShortcutParseError:
             return ""
+
+    @Slot(str, result=bool)
+    def isReservedCustomShortcut(self, text):
+        try:
+            return is_reserved_risky_shortcut(text, allow_modifier_only=False)
+        except ShortcutParseError:
+            return False
 
     @Slot(str, result=str)
     def displayShortcutKeyName(self, name):

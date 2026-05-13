@@ -467,6 +467,12 @@ class BackendDeviceLayoutTests(unittest.TestCase):
                 "ctrl+f24",
             )
 
+    def test_reserved_custom_shortcut_warning_slot(self):
+        backend = self._make_backend()
+
+        self.assertTrue(backend.isReservedCustomShortcut("Win+Shift+S"))
+        self.assertFalse(backend.isReservedCustomShortcut("Ctrl+Shift+P"))
+
     def test_add_profile_stores_catalog_id_for_linux_app(self):
         backend = self._make_backend()
         fake_catalog = [

@@ -15,6 +15,7 @@ Rectangle {
     property bool _valid: false
     property string _preview: ""
     property string _canonical: ""
+    property string _warning: ""
 
     signal captured(string comboString)
     signal cancelled()
@@ -31,6 +32,7 @@ Rectangle {
         _valid = false
         _preview = ""
         _canonical = ""
+        _warning = ""
         visible = true
         shortcutField.forceActiveFocus()
     }
@@ -43,6 +45,7 @@ Rectangle {
         if (!text || !text.trim()) {
             _valid = false
             _preview = ""
+            _warning = ""
             return
         }
         var canonical = backend.canonicalizeCustomShortcut(text)
@@ -50,6 +53,7 @@ Rectangle {
             _valid = false
             _canonical = ""
             _preview = "\u2718 Invalid shortcut"
+            _warning = ""
             return
         }
         var parts = canonical.split("+")
@@ -59,6 +63,9 @@ Rectangle {
         _valid = true
         _canonical = canonical
         _preview = "\u2714 " + labels.join(" + ")
+        _warning = backend.isReservedCustomShortcut(canonical)
+                   ? s["key_capture.reserved_warning"]
+                   : ""
     }
 
     function _canonicalKeyName(name) {
@@ -163,6 +170,15 @@ Rectangle {
                 font { family: uiState.fontFamily; pixelSize: 12 }
                 color: dialog._valid ? "#4caf50" : "#f44336"
                 visible: dialog._preview !== ""
+            }
+
+            Text {
+                text: dialog._warning
+                width: parent.width
+                wrapMode: Text.WordWrap
+                font { family: uiState.fontFamily; pixelSize: 11 }
+                color: "#ffb74d"
+                visible: dialog._warning !== ""
             }
 
             Text {
