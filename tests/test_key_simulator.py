@@ -53,6 +53,21 @@ class CustomShortcutParsingTests(unittest.TestCase):
         )
         self.assertEqual(keys, [17, 52])
 
+    def test_parse_custom_combo_accepts_manual_shifted_symbols(self):
+        keys = key_simulator._parse_custom_combo(
+            "custom:ctrl+<",
+            {"ctrl": 17, "shift": 16, "comma": 188},
+        )
+        self.assertEqual(keys, [17, 16, 188])
+
+    def test_parse_custom_combo_rejects_multiple_non_modifier_keys(self):
+        self.assertIsNone(
+            key_simulator._parse_custom_combo(
+                "custom:ctrl+a+b",
+                {"ctrl": 17, "a": 65, "b": 66},
+            )
+        )
+
     def test_windows_custom_shortcut_codes_include_f13_through_f24(self):
         self.assertEqual(key_simulator.WINDOWS_FUNCTION_KEY_CODES["f1"], 0x70)
         self.assertEqual(key_simulator.WINDOWS_FUNCTION_KEY_CODES["f12"], 0x7B)
@@ -101,6 +116,9 @@ class LinuxDesktopShortcutTests(unittest.TestCase):
         self.assertIn(module.KEY_4, module._ALL_KEY_CODES)
         self.assertEqual(module._KEY_NAME_TO_CODE["control"], module.KEY_LEFTCTRL)
         self.assertEqual(module._KEY_NAME_TO_CODE["cmd"], module.KEY_LEFTMETA)
+        self.assertEqual(module._KEY_NAME_TO_CODE["insert"], 110)
+        self.assertIn(module._KEY_NAME_TO_CODE["semicolon"], module._ALL_KEY_CODES)
+        self.assertIn(module._KEY_NAME_TO_CODE["f24"], module._ALL_KEY_CODES)
 
 
 class MacOSZoomActionTests(unittest.TestCase):
@@ -218,6 +236,16 @@ class CustomShortcutCaptureTests(unittest.TestCase):
                 platform_name="linux",
             ),
             "super+w",
+        )
+
+    def test_capture_normalization_accepts_punctuation_aliases(self):
+        self.assertEqual(
+            key_simulator.normalize_captured_shortcut_parts(
+                ["ctrl"],
+                "<",
+                platform_name="win32",
+            ),
+            "ctrl+shift+comma",
         )
 
 

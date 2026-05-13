@@ -31,6 +31,7 @@ from core.key_simulator import (
     normalize_captured_shortcut_parts,
     valid_custom_key_names,
 )
+from core.key_registry import ShortcutParseError, canonical_shortcut_text, pretty_key_name
 from core.startup import (
     apply_login_startup,
     supports_login_startup,
@@ -97,6 +98,8 @@ def _qt_shortcut_key_name(key, text=""):
         return "pageup"
     if key == _qt_enum_int(Qt.Key_PageDown):
         return "pagedown"
+    if key == _qt_enum_int(Qt.Key_Insert):
+        return "insert"
 
     for n in range(1, 25):
         qt_key = getattr(Qt, f"Key_F{n}", None)
@@ -110,8 +113,10 @@ def _qt_shortcut_key_name(key, text=""):
 
     if len(text) == 1:
         lowered = text.lower()
-        if "a" <= lowered <= "z" or "0" <= lowered <= "9":
-            return lowered
+        try:
+            return canonical_shortcut_text(lowered, allow_modifier_only=False)
+        except ShortcutParseError:
+            pass
     return ""
 
 
@@ -954,6 +959,20 @@ class Backend(QObject):
     @Slot(int, int, str, result=str)
     def shortcutComboFromQtEvent(self, key, modifiers, text):
         return _qt_shortcut_combo(key, modifiers, text)
+
+    @Slot(str, result=str)
+    def canonicalizeCustomShortcut(self, text):
+        try:
+            return canonical_shortcut_text(text, allow_modifier_only=False)
+        except ShortcutParseError:
+            return ""
+
+    @Slot(str, result=str)
+    def displayShortcutKeyName(self, name):
+        try:
+            return pretty_key_name(name, platform_name=sys.platform)
+        except ShortcutParseError:
+            return name
 
     @Slot(result=str)
     def dumpDeviceInfo(self):

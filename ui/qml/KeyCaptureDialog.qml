@@ -14,6 +14,7 @@ Rectangle {
     property string targetProfile: ""
     property bool _valid: false
     property string _preview: ""
+    property string _canonical: ""
 
     signal captured(string comboString)
     signal cancelled()
@@ -29,6 +30,7 @@ Rectangle {
         shortcutField.text = ""
         _valid = false
         _preview = ""
+        _canonical = ""
         visible = true
         shortcutField.forceActiveFocus()
     }
@@ -43,42 +45,19 @@ Rectangle {
             _preview = ""
             return
         }
-        var modifiers = ["ctrl", "shift", "alt", "super"]
-        var parts = text.split("+")
-        var validNames = backend.validKeyNames
-        var validSet = {}
-        for (var i = 0; i < validNames.length; i++)
-            validSet[validNames[i]] = true
-        var labels = []
-        var seen = {}
-        var hasNonModifier = false
-        for (var j = 0; j < parts.length; j++) {
-            var name = parts[j].trim().toLowerCase()
-            if (!name) {
-                _valid = false
-                _preview = "\u2718 Empty key segment"
-                return
-            }
-            if (!validSet[name]) {
-                _valid = false
-                _preview = "\u2718 Unknown key: " + parts[j].trim()
-                return
-            }
-            if (seen[name]) {
-                _valid = false
-                _preview = "\u2718 Duplicate key: " + name
-                return
-            }
-            seen[name] = true
-            if (modifiers.indexOf(name) < 0) hasNonModifier = true
-            labels.push(dialog._displayKeyName(name))
-        }
-        if (!hasNonModifier) {
+        var canonical = backend.canonicalizeCustomShortcut(text)
+        if (!canonical) {
             _valid = false
-            _preview = "\u2718 Need at least one non-modifier key"
+            _canonical = ""
+            _preview = "\u2718 Invalid shortcut"
             return
         }
+        var parts = canonical.split("+")
+        var labels = []
+        for (var j = 0; j < parts.length; j++)
+            labels.push(dialog._displayKeyName(parts[j]))
         _valid = true
+        _canonical = canonical
         _preview = "\u2714 " + labels.join(" + ")
     }
 
@@ -113,7 +92,7 @@ Rectangle {
             return "Shift"
         if (lowered.length === 1)
             return lowered.toUpperCase()
-        return lowered.charAt(0).toUpperCase() + lowered.slice(1)
+        return backend.displayShortcutKeyName(lowered)
     }
 
     function _comboFromEvent(event) {
@@ -124,6 +103,13 @@ Rectangle {
     function _acceptKey(event) {
         if (!event || event.isAutoRepeat)
             return
+        if (event.modifiers === Qt.NoModifier
+                && (event.text || event.key === Qt.Key_Backspace
+                    || event.key === Qt.Key_Delete
+                    || event.key === Qt.Key_Left
+                    || event.key === Qt.Key_Right)) {
+            return
+        }
         var combo = _comboFromEvent(event)
         if (!combo)
             return
@@ -163,12 +149,13 @@ Rectangle {
                 width: parent.width
                 placeholderText: s["key_capture.placeholder"]
                 font { family: uiState.fontFamily; pixelSize: 13 }
-                readOnly: true
-                selectByMouse: false
+                readOnly: false
+                selectByMouse: true
                 inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
                 Material.accent: dialog.theme.accent
                 Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function(event) { dialog._acceptKey(event) }
+                onTextChanged: dialog._validate(text)
             }
 
             Text {
@@ -229,10 +216,7 @@ Rectangle {
                                                    : Qt.ArrowCursor
                         onClicked: {
                             if (!dialog._valid) return
-                            var normalized = shortcutField.text.split("+").map(
-                                function(p) { return p.trim().toLowerCase() }
-                            ).join("+")
-                            dialog.captured(normalized)
+                            dialog.captured(dialog._canonical)
                             dialog.close()
                         }
                     }

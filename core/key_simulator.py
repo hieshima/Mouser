@@ -8,6 +8,8 @@ import sys
 import threading
 import time
 
+from core import key_registry
+
 
 # ==================================================================
 # Custom shortcut helpers (shared across platforms)
@@ -17,16 +19,19 @@ def custom_action_label(action_id):
     """Convert 'custom:ctrl+shift+a' → 'Ctrl + Shift + A'."""
     if not action_id.startswith("custom:"):
         return action_id
-    parts = action_id[7:].split("+")
+    try:
+        parts = key_registry.parse_shortcut_text(
+            action_id[7:],
+            allow_modifier_only=True,
+        )
+    except key_registry.ShortcutParseError:
+        parts = [part for part in action_id[7:].split("+") if part]
     return " + ".join(_pretty_custom_key_name(p) for p in parts)
 
 
 def valid_custom_key_names():
     """Return the sorted list of valid key names for custom shortcuts."""
-    try:
-        return sorted(_KEY_NAME_TO_CODE.keys())
-    except NameError:
-        return []
+    return key_registry.valid_key_names(sys.platform)
 
 
 WINDOWS_FUNCTION_KEY_CODES = {
@@ -38,78 +43,49 @@ WINDOWS_FUNCTION_KEY_CODES = {
 def normalize_captured_shortcut_parts(modifier_names, key_name="", platform_name=None):
     """Normalize captured modifier/key names into stored shortcut syntax."""
     platform_name = platform_name or sys.platform
-
-    def _normalize(name):
-        lowered = (name or "").strip().lower()
-        if not lowered:
-            return ""
-        if platform_name == "darwin":
-            if lowered == "ctrl":
-                return "super"
-            if lowered == "super":
-                return "ctrl"
-        return lowered
-
-    parts = []
-    for name in modifier_names:
-        normalized = _normalize(name)
-        if normalized and normalized not in parts:
-            parts.append(normalized)
-
-    normalized_key = _normalize(key_name)
-    if normalized_key and normalized_key not in parts:
-        parts.append(normalized_key)
-    return "+".join(parts)
+    try:
+        return key_registry.normalize_shortcut_parts(
+            modifier_names,
+            key_name,
+            platform_name=platform_name,
+        )
+    except key_registry.ShortcutParseError:
+        return ""
 
 
 _CUSTOM_KEY_NAME_ALIASES = {
-    "control": "ctrl",
-    "option": "alt",
-    "opt": "alt",
-    "cmd": "super",
-    "command": "super",
-    "meta": "super",
-    "win": "super",
-    "windows": "super",
-    "return": "enter",
-    "escape": "esc",
+    **key_registry.MODIFIER_ALIASES,
+    **key_registry.KEY_ALIASES,
 }
 
 
 def _build_custom_key_name_map(base_map):
     """Add common aliases to a per-platform key-name map."""
-    key_map = dict(base_map)
-    for alias, canonical in _CUSTOM_KEY_NAME_ALIASES.items():
-        code = key_map.get(canonical)
-        if code is not None:
-            key_map[alias] = code
-    return key_map
+    return key_registry.build_key_name_to_code_map(base_map, sys.platform)
 
 
 def _pretty_custom_key_name(name):
-    normalized = _CUSTOM_KEY_NAME_ALIASES.get(name.strip().lower(), name.strip().lower())
-    if normalized in {"super", "cmd", "command", "meta", "win", "windows"}:
-        return "Super"
-    if normalized in {"alt", "option", "opt"}:
-        return "Opt" if sys.platform == "darwin" else "Alt"
-    if normalized == "ctrl":
-        return "Ctrl"
-    if normalized == "shift":
-        return "Shift"
-    return normalized.capitalize()
+    try:
+        return key_registry.pretty_key_name(name)
+    except key_registry.ShortcutParseError:
+        return name.strip().capitalize()
 
 
 def _parse_custom_combo(action_id, key_name_to_code):
     """Parse 'custom:ctrl+a' → list of platform key codes using given mapping."""
     if not action_id.startswith("custom:"):
         return None
-    parts = action_id[7:].split("+")
+    try:
+        parts = key_registry.parse_shortcut_text(
+            action_id[7:],
+            allow_modifier_only=True,
+        )
+    except key_registry.ShortcutParseError as exc:
+        print(f"[KeySimulator] {exc}")
+        return None
     codes = []
     for name in parts:
-        name = name.strip()
-        if not name:
-            continue
-        code = key_name_to_code.get(name.lower())
+        code = key_name_to_code.get(name)
         if code is None:
             print(f"[KeySimulator] Unknown key name: {name}")
             return None
@@ -147,6 +123,7 @@ if sys.platform == "win32":
     VK_UP = 0x26
     VK_RIGHT = 0x27
     VK_DOWN = 0x28
+    VK_INSERT = 0x2D
     VK_DELETE = 0x2E
     VK_BACK = 0x08
 
@@ -326,7 +303,7 @@ if sys.platform == "win32":
         VK_MEDIA_STOP, VK_MEDIA_PLAY_PAUSE,
         VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN,
         VK_DELETE, VK_RETURN, VK_TAB,
-        VK_PRIOR, VK_NEXT, VK_HOME, VK_END,   # navigation cluster (extended)
+        VK_PRIOR, VK_NEXT, VK_HOME, VK_END, VK_INSERT,  # navigation cluster
     })
 
     def _is_extended(vk):
@@ -1630,6 +1607,7 @@ elif sys.platform == "linux":
         "mute": KEY_MUTE, "playpause": KEY_PLAYPAUSE,
         "nexttrack": KEY_NEXTSONG, "prevtrack": KEY_PREVIOUSSONG,
     })
+    _ALL_KEY_CODES = sorted(set(_ALL_KEY_CODES) | set(_KEY_NAME_TO_CODE.values()))
 
     def execute_action(action_id):
         if action_id.startswith("custom:"):

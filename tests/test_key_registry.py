@@ -1,0 +1,72 @@
+import unittest
+
+from core import key_registry
+
+
+class KeyRegistryParsingTests(unittest.TestCase):
+    def test_manual_entry_is_case_insensitive_and_orders_modifiers(self):
+        self.assertEqual(
+            key_registry.canonical_shortcut_text("Shift + Ctrl + A"),
+            "ctrl+shift+a",
+        )
+
+    def test_aliases_resolve_to_canonical_names(self):
+        self.assertEqual(
+            key_registry.canonical_shortcut_text("command+page down"),
+            "super+pagedown",
+        )
+        self.assertEqual(
+            key_registry.canonical_shortcut_text("win+pgup"),
+            "super+pageup",
+        )
+
+    def test_shifted_symbols_normalize_to_physical_us_keys(self):
+        self.assertEqual(
+            key_registry.canonical_shortcut_text("ctrl+<"),
+            "ctrl+shift+comma",
+        )
+        self.assertEqual(
+            key_registry.canonical_shortcut_text("win+plus"),
+            "shift+super+equal",
+        )
+
+    def test_duplicate_keys_are_rejected(self):
+        with self.assertRaises(key_registry.ShortcutParseError):
+            key_registry.canonical_shortcut_text("ctrl+control+a")
+
+    def test_multiple_non_modifier_keys_are_rejected(self):
+        with self.assertRaises(key_registry.ShortcutParseError):
+            key_registry.canonical_shortcut_text("ctrl+a+b")
+
+    def test_modifier_only_shortcuts_are_rejected_by_default(self):
+        with self.assertRaises(key_registry.ShortcutParseError):
+            key_registry.canonical_shortcut_text("ctrl+shift")
+
+    def test_platform_maps_include_navigation_function_and_punctuation_keys(self):
+        windows = key_registry.build_key_name_to_code_map(platform_name="win32")
+        macos = key_registry.build_key_name_to_code_map(platform_name="darwin")
+        linux = key_registry.build_key_name_to_code_map(platform_name="linux")
+
+        self.assertEqual(windows["insert"], 0x2D)
+        self.assertEqual(macos["insert"], 0x72)
+        self.assertEqual(linux["insert"], 110)
+
+        self.assertEqual(windows["semicolon"], 0xBA)
+        self.assertEqual(macos["semicolon"], 0x29)
+        self.assertEqual(linux["semicolon"], 39)
+
+        self.assertEqual(windows["f24"], 0x87)
+        self.assertIn("f20", macos)
+        self.assertIn("f24", linux)
+
+    def test_valid_names_include_aliases_and_shifted_symbol_words(self):
+        names = set(key_registry.valid_key_names("win32"))
+
+        self.assertIn("pgup", names)
+        self.assertIn("plus", names)
+        self.assertIn(";", names)
+        self.assertIn("insert", names)
+
+
+if __name__ == "__main__":
+    unittest.main()
