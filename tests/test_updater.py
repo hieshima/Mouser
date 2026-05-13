@@ -10,6 +10,7 @@ from core.updater import (
     fetch_latest_release,
     is_newer,
 )
+from core.version import APP_VERSION
 
 
 class _FakeResponse:
@@ -62,7 +63,7 @@ class UpdaterTests(unittest.TestCase):
         )
         request = mocked.call_args.args[0]
         self.assertIn("TomBadash/Mouser", request.full_url)
-        self.assertEqual(request.get_header("User-agent"), "Mouser update checker")
+        self.assertEqual(request.get_header("User-agent"), f"Mouser/{APP_VERSION}")
 
     def test_fetch_latest_release_returns_none_on_malformed_response(self):
         with patch(
