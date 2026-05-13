@@ -92,15 +92,15 @@ a = Analysis(
         (os.path.join(ROOT, "images"), "images"),
         (
             os.path.join(ROOT, "packaging", "linux", "69-mouser-logitech.rules"),
-            os.path.join("linux", "69-mouser-logitech.rules"),
+            "linux",
         ),
         (
             os.path.join(ROOT, "packaging", "linux", "install-linux-permissions.sh"),
-            os.path.join("linux", "install-linux-permissions.sh"),
+            "linux",
         ),
         (
             os.path.join(ROOT, "packaging", "linux", "io.github.tombadash.mouser.desktop.in"),
-            os.path.join("linux", "io.github.tombadash.mouser.desktop.in"),
+            "linux",
         ),
         (BUILD_INFO_DATA, "."),
     ],
