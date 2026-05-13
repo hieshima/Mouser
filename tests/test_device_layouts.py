@@ -2,17 +2,21 @@ import unittest
 from pathlib import Path
 
 from core.device_layouts import _FAMILY_FALLBACKS, get_device_layout, get_manual_layout_choices
+from core.logi_device_catalog import LOGI_DEVICE_LAYOUTS
 from core.logi_devices import KNOWN_LOGI_DEVICES
 
 
 class DeviceLayoutTests(unittest.TestCase):
-    def test_known_devices_have_interactive_layouts_and_assets(self):
+    def test_known_devices_have_layouts_and_assets(self):
         image_root = Path(__file__).resolve().parents[1] / "images"
         for device in KNOWN_LOGI_DEVICES:
             with self.subTest(device=device.key, ui_layout=device.ui_layout):
                 layout = get_device_layout(device.ui_layout)
 
-                self.assertTrue(layout["interactive"])
+                if device.ui_layout == "generic_mouse":
+                    self.assertFalse(layout["interactive"])
+                else:
+                    self.assertTrue(layout["interactive"])
                 self.assertEqual(layout["key"], device.ui_layout)
                 self.assertTrue((image_root / layout["image_asset"]).is_file())
 
@@ -23,6 +27,38 @@ class DeviceLayoutTests(unittest.TestCase):
             for hotspot in layout["hotspots"]:
                 with self.subTest(device=device.key, button=hotspot["buttonKey"]):
                     self.assertIn(hotspot["buttonKey"], supported_buttons)
+
+    def test_catalog_same_side_label_anchors_do_not_overlap(self):
+        min_label_separation_px = 35
+        for layout_key, layout in LOGI_DEVICE_LAYOUTS.items():
+            labels_by_side = {}
+            for hotspot in layout["hotspots"]:
+                side = hotspot.get("labelSide", "right")
+                label_y = (
+                    layout["image_height"] * hotspot["normY"]
+                    + hotspot.get("labelOffY", 0)
+                )
+                labels_by_side.setdefault(side, []).append(
+                    (label_y, hotspot["buttonKey"])
+                )
+
+            for side, labels in labels_by_side.items():
+                labels.sort()
+                for (a_y, a_key), (b_y, b_key) in zip(labels, labels[1:]):
+                    gap = b_y - a_y
+                    with self.subTest(
+                        layout=layout_key,
+                        side=side,
+                        first=a_key,
+                        second=b_key,
+                    ):
+                        self.assertGreaterEqual(
+                            gap,
+                            min_label_separation_px,
+                            f"{layout_key}: {a_key} (Y={a_y:.1f}) and "
+                            f"{b_key} (Y={b_y:.1f}) on {side} side are "
+                            f"{gap:.1f}px apart",
+                        )
 
     def test_master_layout_is_interactive(self):
         layout = get_device_layout("mx_master")
