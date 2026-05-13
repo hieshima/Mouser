@@ -295,6 +295,20 @@ class Backend(QObject):
                 sync_login_startup_from_config(self.startAtLogin)
             except Exception as exc:
                 print(f"[startup] Failed to sync desktop integration: {exc}", file=sys.stderr)
+                if self.startAtLogin:
+                    self._cfg.setdefault("settings", {})["start_at_login"] = False
+                    try:
+                        save_config(self._cfg)
+                    except Exception as save_exc:
+                        print(
+                            "[startup] Failed to save start-at-login recovery state: "
+                            f"{save_exc}",
+                            file=sys.stderr,
+                        )
+                    self.settingsChanged.emit()
+                    self.statusMessage.emit(
+                        "Start at login could not be enabled. Please try again."
+                    )
         else:
             self._cfg.setdefault("settings", {})["start_at_login"] = False
         self._sync_connected_device_info()

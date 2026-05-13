@@ -1,8 +1,9 @@
 import os
+import plistlib
 import sys
 import tempfile
 import unittest
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 from core import startup as st
 
@@ -160,8 +161,124 @@ class ApplyLoginStartupMacTests(unittest.TestCase):
         )
 
     def test_macos_enable_writes_plist_and_bootstraps(self):
-        plist = "/tmp/io.github.tombadash.mouser.plist"
         domain = "gui/501"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plist = os.path.join(tmp, "LaunchAgents", "io.github.tombadash.mouser.plist")
+
+            with (
+                patch.object(sys, "platform", "darwin"),
+                patch("core.startup.os.getuid", return_value=501, create=True),
+                patch.object(st, "supports_login_startup", return_value=True),
+                patch.object(st, "_macos_plist_path", return_value=plist),
+                patch.object(st, "_program_arguments", return_value=["/X/Mouser"]),
+                patch.object(st, "_launchctl_run") as m_lc,
+            ):
+                m_lc.return_value = MagicMock(returncode=0)
+                st.apply_login_startup(True)
+
+            with open(plist, "rb") as f:
+                payload = plistlib.load(f)
+            self.assertEqual(payload["ProgramArguments"], ["/X/Mouser"])
+            self.assertTrue(payload["RunAtLoad"])
+            self.assertEqual(m_lc.call_count, 1)
+            m_lc.assert_called_with(
+                ["launchctl", "bootstrap", domain, plist]
+            )
+
+    def test_macos_enable_raises_and_removes_plist_when_bootstrap_fails(self):
+        domain = "gui/501"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plist = os.path.join(tmp, "io.github.tombadash.mouser.plist")
+
+            with (
+                patch.object(sys, "platform", "darwin"),
+                patch("core.startup.os.getuid", return_value=501, create=True),
+                patch.object(st, "supports_login_startup", return_value=True),
+                patch.object(st, "_macos_plist_path", return_value=plist),
+                patch.object(st, "_program_arguments", return_value=["/X/Mouser"]),
+                patch.object(st, "_launchctl_run") as m_lc,
+            ):
+                m_lc.return_value = MagicMock(
+                    returncode=5,
+                    stderr="Bootstrap failed",
+                    stdout="",
+                )
+                with self.assertRaisesRegex(RuntimeError, "launchctl bootstrap failed"):
+                    st.apply_login_startup(True)
+
+            m_lc.assert_called_once_with(
+                ["launchctl", "bootstrap", domain, plist]
+            )
+            self.assertFalse(os.path.exists(plist))
+
+    def test_macos_enable_reports_cleanup_failure_after_bootstrap_fails(self):
+        domain = "gui/501"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plist = os.path.join(tmp, "io.github.tombadash.mouser.plist")
+
+            with (
+                patch.object(sys, "platform", "darwin"),
+                patch("core.startup.os.getuid", return_value=501, create=True),
+                patch.object(st, "supports_login_startup", return_value=True),
+                patch.object(st, "_macos_plist_path", return_value=plist),
+                patch.object(st, "_program_arguments", return_value=["/X/Mouser"]),
+                patch.object(st, "_launchctl_run") as m_lc,
+                patch("core.startup.os.remove", side_effect=OSError("cleanup failed")),
+            ):
+                m_lc.return_value = MagicMock(
+                    returncode=5,
+                    stderr="Bootstrap failed",
+                    stdout="",
+                )
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "additionally failed to restore the previous launch agent",
+                ) as ctx:
+                    st.apply_login_startup(True)
+
+            self.assertIn("cleanup failed", str(ctx.exception))
+
+    def test_macos_enable_restores_existing_plist_when_bootstrap_fails(self):
+        domain = "gui/501"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plist = os.path.join(tmp, "io.github.tombadash.mouser.plist")
+            with open(plist, "wb") as f:
+                f.write(b"old plist")
+
+            with (
+                patch.object(sys, "platform", "darwin"),
+                patch("core.startup.os.getuid", return_value=501, create=True),
+                patch.object(st, "supports_login_startup", return_value=True),
+                patch.object(st, "_macos_plist_path", return_value=plist),
+                patch.object(st, "_program_arguments", return_value=["/X/Mouser"]),
+                patch.object(st, "_launchctl_run") as m_lc,
+            ):
+                m_lc.side_effect = [
+                    MagicMock(returncode=0),
+                    MagicMock(returncode=5, stderr="Bootstrap failed", stdout=""),
+                    MagicMock(returncode=0),
+                ]
+
+                with self.assertRaisesRegex(RuntimeError, "launchctl bootstrap failed"):
+                    st.apply_login_startup(True)
+
+            with open(plist, "rb") as f:
+                self.assertEqual(f.read(), b"old plist")
+            self.assertEqual(
+                [call.args[0] for call in m_lc.call_args_list],
+                [
+                    ["launchctl", "bootout", domain, plist],
+                    ["launchctl", "bootstrap", domain, plist],
+                    ["launchctl", "bootstrap", domain, plist],
+                ],
+            )
+
+    def test_macos_enable_does_not_bootout_when_existing_plist_cannot_be_preserved(self):
+        plist = "/tmp/io.github.tombadash.mouser.plist"
 
         with (
             patch.object(sys, "platform", "darwin"),
@@ -170,20 +287,59 @@ class ApplyLoginStartupMacTests(unittest.TestCase):
             patch.object(st, "_macos_plist_path", return_value=plist),
             patch.object(st, "_program_arguments", return_value=["/X/Mouser"]),
             patch.object(st, "_launchctl_run") as m_lc,
-            patch("os.makedirs") as m_makedirs,
-            patch("os.path.isfile", return_value=False),
-            patch("builtins.open", mock_open()) as m_open,
-            patch("core.startup.plistlib.dump"),
+            patch("os.makedirs"),
+            patch("os.path.isfile", return_value=True),
+            patch("builtins.open", side_effect=OSError("read failed")),
         ):
-            m_lc.return_value = MagicMock(returncode=0)
-            st.apply_login_startup(True)
+            with self.assertRaisesRegex(RuntimeError, "failed to preserve"):
+                st.apply_login_startup(True)
 
-        m_makedirs.assert_called_once()
-        m_open.assert_called_once_with(plist, "wb")
-        self.assertEqual(m_lc.call_count, 1)
-        m_lc.assert_called_with(
-            ["launchctl", "bootstrap", domain, plist]
-        )
+        m_lc.assert_not_called()
+
+    def test_macos_enable_restores_existing_plist_when_write_fails_after_bootout(self):
+        domain = "gui/501"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            plist = os.path.join(tmp, "io.github.tombadash.mouser.plist")
+            with open(plist, "wb") as f:
+                f.write(b"old plist")
+
+            write_calls = []
+
+            def fake_atomic_write(path, data):
+                write_calls.append((path, data))
+                if len(write_calls) == 1:
+                    raise OSError("write failed")
+                with open(path, "wb") as f:
+                    f.write(data)
+
+            with (
+                patch.object(sys, "platform", "darwin"),
+                patch("core.startup.os.getuid", return_value=501, create=True),
+                patch.object(st, "supports_login_startup", return_value=True),
+                patch.object(st, "_macos_plist_path", return_value=plist),
+                patch.object(st, "_program_arguments", return_value=["/X/Mouser"]),
+                patch.object(st, "_launchctl_run") as m_lc,
+                patch.object(st, "_atomic_write_file", side_effect=fake_atomic_write),
+            ):
+                m_lc.side_effect = [
+                    MagicMock(returncode=0),
+                    MagicMock(returncode=0),
+                ]
+
+                with self.assertRaisesRegex(RuntimeError, "failed to update launch agent"):
+                    st.apply_login_startup(True)
+
+            with open(plist, "rb") as f:
+                self.assertEqual(f.read(), b"old plist")
+            self.assertEqual(len(write_calls), 2)
+            self.assertEqual(
+                [call.args[0] for call in m_lc.call_args_list],
+                [
+                    ["launchctl", "bootout", domain, plist],
+                    ["launchctl", "bootstrap", domain, plist],
+                ],
+            )
 
     def test_macos_disable_bootout_and_remove_when_plist_exists(self):
         plist = "/tmp/io.github.tombadash.mouser.plist"

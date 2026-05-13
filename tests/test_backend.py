@@ -638,6 +638,40 @@ class BackendLoginStartupTests(unittest.TestCase):
             Backend(engine=None)
         sync_mock.assert_called_once_with(True)
 
+    def test_init_clears_start_at_login_when_sync_fails(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["settings"]["start_at_login"] = True
+        with (
+            patch("ui.backend.load_config", return_value=cfg),
+            patch("ui.backend.save_config") as save_mock,
+            patch("ui.backend.supports_login_startup", return_value=True),
+            patch(
+                "ui.backend.sync_login_startup_from_config",
+                side_effect=RuntimeError("bootstrap failed"),
+            ),
+        ):
+            backend = Backend(engine=None)
+
+        self.assertFalse(backend.startAtLogin)
+        save_mock.assert_called_once()
+
+    def test_init_sync_failure_keeps_disabled_config_disabled(self):
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        cfg["settings"]["start_at_login"] = False
+        with (
+            patch("ui.backend.load_config", return_value=cfg),
+            patch("ui.backend.save_config") as save_mock,
+            patch("ui.backend.supports_login_startup", return_value=True),
+            patch(
+                "ui.backend.sync_login_startup_from_config",
+                side_effect=RuntimeError("bootout failed"),
+            ),
+        ):
+            backend = Backend(engine=None)
+
+        self.assertFalse(backend.startAtLogin)
+        save_mock.assert_not_called()
+
     def test_init_clears_start_at_login_when_unsupported(self):
         cfg = copy.deepcopy(DEFAULT_CONFIG)
         cfg["settings"]["start_at_login"] = True

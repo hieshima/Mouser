@@ -4,6 +4,7 @@ import os
 import plistlib
 import subprocess
 import sys
+import tempfile
 
 # Windows
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -246,6 +247,70 @@ def _launchctl_run(args: list) -> subprocess.CompletedProcess:
     )
 
 
+def _launchctl_failure_message(action: str, result: subprocess.CompletedProcess) -> str:
+    details = (result.stderr or result.stdout or "").strip()
+    if details:
+        return f"launchctl {action} failed: {details}"
+    return f"launchctl {action} failed with exit code {result.returncode}"
+
+
+def _atomic_write_file(path: str, data: bytes) -> None:
+    directory = os.path.dirname(path) or "."
+    prefix = f".{os.path.basename(path)}."
+    fd, tmp_path = tempfile.mkstemp(prefix=prefix, suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+        tmp_path = ""
+    finally:
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+
+def _remove_file_if_present(path: str) -> None:
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
+def _restore_macos_plist(
+    plist_path: str,
+    previous_plist: bytes | None,
+    domain: str,
+) -> None:
+    if previous_plist is None:
+        _remove_file_if_present(plist_path)
+        return
+    _atomic_write_file(plist_path, previous_plist)
+    result = _launchctl_run(["launchctl", "bootstrap", domain, plist_path])
+    if result.returncode != 0:
+        raise RuntimeError(_launchctl_failure_message("restore bootstrap", result))
+
+
+def _restore_macos_plist_then_raise(
+    plist_path: str,
+    previous_plist: bytes | None,
+    domain: str,
+    exc: Exception,
+) -> None:
+    try:
+        _restore_macos_plist(plist_path, previous_plist, domain)
+    except Exception as restore_exc:
+        raise RuntimeError(
+            f"{exc}; additionally failed to restore the previous launch agent: {restore_exc}"
+        ) from exc
+    if isinstance(exc, RuntimeError):
+        raise exc
+    raise RuntimeError(f"failed to update launch agent: {exc}") from exc
+
+
 def _apply_macos(enabled: bool) -> None:
     if sys.platform != "darwin":
         return
@@ -256,21 +321,30 @@ def _apply_macos(enabled: bool) -> None:
 
     if enabled:
         os.makedirs(launch_agents_dir, exist_ok=True)
-        if os.path.isfile(plist_path):
+        plist_existed = os.path.isfile(plist_path)
+        previous_plist = None
+        if plist_existed:
+            try:
+                with open(plist_path, "rb") as f:
+                    previous_plist = f.read()
+            except OSError as exc:
+                raise RuntimeError(
+                    f"failed to preserve existing launch agent: {exc}"
+                ) from exc
             _launchctl_run(["launchctl", "bootout", domain, plist_path])
         payload = {
             "Label": MACOS_LAUNCH_AGENT_LABEL,
             "ProgramArguments": _program_arguments(),
             "RunAtLoad": True,
         }
-        with open(plist_path, "wb") as f:
-            plistlib.dump(payload, f, fmt=plistlib.FMT_XML)
-        result = _launchctl_run(["launchctl", "bootstrap", domain, plist_path])
-        if result.returncode != 0:
-            print(
-                f"[startup] launchctl bootstrap failed: {result.stderr.strip()}",
-                file=sys.stderr,
-            )
+        new_plist = plistlib.dumps(payload, fmt=plistlib.FMT_XML)
+        try:
+            _atomic_write_file(plist_path, new_plist)
+            result = _launchctl_run(["launchctl", "bootstrap", domain, plist_path])
+            if result.returncode != 0:
+                raise RuntimeError(_launchctl_failure_message("bootstrap", result))
+        except Exception as exc:
+            _restore_macos_plist_then_raise(plist_path, previous_plist, domain, exc)
     else:
         if os.path.isfile(plist_path):
             _launchctl_run(["launchctl", "bootout", domain, plist_path])
