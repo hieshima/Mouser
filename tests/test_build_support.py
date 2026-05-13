@@ -1,4 +1,5 @@
 import os
+import re
 import stat
 import unittest
 
@@ -63,6 +64,32 @@ class LinuxPermissionPackagingTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(helper))
         self.assertTrue(os.stat(helper).st_mode & stat.S_IXUSR)
         self.assertTrue(os.path.isfile(rules))
+
+    def test_linux_spec_packages_linux_files_into_linux_directory(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        spec_path = os.path.join(root, "Mouser-linux.spec")
+        with open(spec_path, encoding="utf-8") as spec_file:
+            spec_text = spec_file.read()
+
+        linux_assets = (
+            "69-mouser-logitech.rules",
+            "install-linux-permissions.sh",
+            "io.github.tombadash.mouser.desktop.in",
+        )
+        for asset_name in linux_assets:
+            with self.subTest(asset=asset_name):
+                self.assertRegex(
+                    spec_text,
+                    re.compile(
+                        rf'os\.path\.join\(ROOT, "packaging", "linux", '
+                        rf'"{re.escape(asset_name)}"\),\s*"linux",',
+                        re.MULTILINE,
+                    ),
+                )
+                self.assertNotIn(
+                    f'os.path.join("linux", "{asset_name}")',
+                    spec_text,
+                )
 
 
 if __name__ == "__main__":
