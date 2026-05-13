@@ -210,66 +210,6 @@ KNOWN_LOGI_DEVICES = tuple(
         supported_buttons=MX_VERTICAL_BUTTONS,
         dpi_max=4000,
     ),
-    LogiDeviceSpec(
-        key="m720_triathlon",
-        display_name="M720 Triathlon",
-        product_ids=(0xB015,),
-        aliases=("M720_Triathlon", "M720 Triathlon Multi-Device Mouse"),
-        ui_layout="generic_mouse",
-        image_asset="icons/mouse-simple.svg",
-        supported_buttons=(
-            "middle",
-            "gesture",
-            "gesture_left",
-            "gesture_right",
-            "gesture_up",
-            "gesture_down",
-            "xbutton1",
-            "xbutton2",
-            "hscroll_left",
-            "hscroll_right",
-        ),
-        gesture_cids=(0x00D0,),
-    ),
-    LogiDeviceSpec(
-        key="mx_ergo",
-        display_name="MX Ergo",
-        product_ids=(0xB01D,),
-        aliases=(
-            "MX Ergo Multi-Device Trackball",
-            "MX_ERGO",
-            "MX Ergo Wireless Trackball",
-        ),
-        ui_layout="generic_mouse",
-        image_asset="icons/mouse-simple.svg",
-        supported_buttons=(
-            "middle",
-            "gesture",
-            "gesture_left",
-            "gesture_right",
-            "gesture_up",
-            "gesture_down",
-            "xbutton1",
-            "xbutton2",
-            "hscroll_left",
-            "hscroll_right",
-        ),
-        gesture_cids=(0x00D7,),
-        dpi_max=4000,
-    ),
-    LogiDeviceSpec(
-        key="ergo_m575",
-        display_name="ERGO M575 Trackball",
-        aliases=(
-            "ERGO M575 Trackball",
-            "Logitech ERGO M575 Trackball",
-            "ERGO M575",
-        ),
-        ui_layout="generic_mouse",
-        image_asset="icons/mouse-simple.svg",
-        supported_buttons=GENERIC_BUTTONS,
-        gesture_cids=(0x00D7,),
-    ),
 )
 
 
@@ -525,8 +465,9 @@ def build_connected_device_info(
             capability_inventory=inventory,
         )
 
-    # Fallback for unrecognized devices (e.g., USB Receiver PID 0xC52B which contains
-    # multiple devices). Default to MX Master 3S layout, the most compatible option.
+    # Fallback for unrecognized devices (e.g., USB Receiver PID 0xC52B which
+    # contains multiple devices). Use the generic layout rather than borrowing
+    # an MX-family UI with controls the device may not physically have.
     display_name = product_name or (
         f"Logitech PID 0x{pid:04X}" if pid is not None else "Logitech mouse"
     )
@@ -538,9 +479,9 @@ def build_connected_device_info(
         product_name=product_name or display_name,
         transport=transport,
         source=source,
-        ui_layout="mx_master_3s",
-        image_asset="logitech-mice/mx_master_3s/mouse.png",
-        supported_buttons=inventory.supported_buttons(MX_MASTER_BUTTONS),
+        ui_layout="generic_mouse",
+        image_asset="icons/mouse-simple.svg",
+        supported_buttons=GENERIC_BUTTONS,
         gesture_cids=tuple(gesture_cids or DEFAULT_GESTURE_CIDS),
         capability_inventory=inventory,
     )

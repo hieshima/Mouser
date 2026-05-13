@@ -184,8 +184,34 @@ class LogiDeviceRegistryTests(unittest.TestCase):
         self.assertEqual(info.display_name, "Mystery Logitech Mouse")
         self.assertEqual(info.key, "mystery_logitech_mouse")
         self.assertEqual(info.gesture_cids, (0x00F1,))
-        self.assertEqual(info.ui_layout, "mx_master_3s")
-        self.assertEqual(info.image_asset, "logitech-mice/mx_master_3s/mouse.png")
+        self.assertEqual(info.ui_layout, "generic_mouse")
+        self.assertEqual(info.image_asset, "icons/mouse-simple.svg")
+        self.assertEqual(info.supported_buttons, ("middle", "xbutton1", "xbutton2"))
+
+    def test_m720_falls_back_to_generic_layout_without_device_claim(self):
+        for product_id in (0xC52B, 0xB015):
+            with self.subTest(product_id=f"0x{product_id:04X}"):
+                info = build_connected_device_info(
+                    product_id=product_id,
+                    product_name="M720 Triathlon Multi-Device Mouse",
+                    reprog_controls=[
+                        {"cid": 0x0050},
+                        {"cid": 0x0051},
+                        {"cid": 0x0052},
+                        {"cid": 0x0053},
+                        {"cid": 0x0056},
+                        {"cid": 0x005B},
+                        {"cid": 0x005D},
+                        {"cid": 0x00D0},
+                        {"cid": 0x00D7},
+                    ],
+                )
+
+                self.assertEqual(info.key, "m720_triathlon_multi-device_mouse")
+                self.assertEqual(info.display_name, "M720 Triathlon Multi-Device Mouse")
+                self.assertEqual(info.ui_layout, "generic_mouse")
+                self.assertEqual(info.image_asset, "icons/mouse-simple.svg")
+                self.assertEqual(info.supported_buttons, ("middle", "xbutton1", "xbutton2"))
 
     def test_known_device_layout_metadata_is_valid(self):
         for device in iter_known_devices():
@@ -442,7 +468,7 @@ class RuntimeSupportedButtonTests(unittest.TestCase):
         self.assertTrue(info.capability_inventory.smart_shift)
         self.assertTrue(info.capability_inventory.adjustable_dpi)
 
-    def test_m720_issue_47_selects_0x00d0_gesture_without_mode_shift(self):
+    def test_m720_issue_47_reports_capability_inventory_without_support_claim(self):
         info = build_connected_device_info(
             product_id=0xB015,
             product_name="M720_Triathlon",
@@ -455,18 +481,20 @@ class RuntimeSupportedButtonTests(unittest.TestCase):
                 self._control(0x00D0, flags=0x0171),
                 self._control(0x00D7, flags=0x03A0),
             ],
+            gesture_cids=(0x00D0,),
+            active_gesture_cid=0x00D0,
+            gesture_rawxy_enabled=True,
             discovered_features=("REPROG_V4 (0x1B04)", "BATTERY (0x1000)"),
         )
 
         self.assertEqual(info.key, "m720_triathlon")
         self.assertEqual(info.ui_layout, "generic_mouse")
+        self.assertEqual(info.supported_buttons, GENERIC_BUTTONS)
         self.assertEqual(info.capability_inventory.active_gesture_cid, 0x00D0)
-        self.assertIn("gesture_up", info.supported_buttons)
-        self.assertIn("hscroll_left", info.supported_buttons)
-        self.assertIn("hscroll_right", info.supported_buttons)
+        self.assertEqual(info.capability_inventory.hscroll_cids, (0x005B, 0x005D))
         self.assertNotIn("mode_shift", info.supported_buttons)
 
-    def test_mx_ergo_issue_22_tracks_precision_mode_as_known_unsupported(self):
+    def test_mx_ergo_issue_22_reports_precision_mode_without_support_claim(self):
         info = build_connected_device_info(
             product_id=0xB01D,
             product_name="MX Ergo Multi-Device Trackball",
@@ -482,16 +510,17 @@ class RuntimeSupportedButtonTests(unittest.TestCase):
             discovered_features=("REPROG_V4 (0x1B04)", "BATTERY (0x1000)"),
         )
 
-        self.assertEqual(info.key, "mx_ergo")
-        self.assertIn("gesture_down", info.supported_buttons)
-        self.assertIn("hscroll_left", info.supported_buttons)
+        self.assertEqual(info.key, "mx_ergo_multi-device_trackball")
+        self.assertEqual(info.ui_layout, "generic_mouse")
+        self.assertEqual(info.supported_buttons, GENERIC_BUTTONS)
+        self.assertEqual(info.capability_inventory.hscroll_cids, (0x005B, 0x005D))
         self.assertNotIn("mode_shift", info.supported_buttons)
         self.assertEqual(
             info.capability_inventory.to_dict()["known_unsupported_controls"],
             [{"cid": "0x00ED", "name": "precision_mode"}],
         )
 
-    def test_ergo_m575_issue_95_uses_conservative_alias_support(self):
+    def test_ergo_m575_issue_95_reports_inventory_without_support_claim(self):
         info = build_connected_device_info(
             product_id=0xC52B,
             product_name="ERGO M575 Trackball",
@@ -508,7 +537,7 @@ class RuntimeSupportedButtonTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(info.key, "ergo_m575")
+        self.assertEqual(info.key, "ergo_m575_trackball")
         self.assertEqual(info.ui_layout, "generic_mouse")
         self.assertEqual(info.supported_buttons, GENERIC_BUTTONS)
         self.assertNotIn("gesture", info.supported_buttons)
