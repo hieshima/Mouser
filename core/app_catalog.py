@@ -282,6 +282,14 @@ MAC_APP_SPECS = [
         "executables": ["Google Chrome"],
     },
     {
+        "id": "org.mozilla.firefox",
+        "label": "Firefox",
+        "legacy_icon": "",
+        "aliases": ["Mozilla Firefox", "Firefox"],
+        "bundle_ids": ["org.mozilla.firefox"],
+        "executables": ["firefox", "Firefox"],
+    },
+    {
         "id": "org.videolan.vlc",
         "label": "VLC Media Player",
         "legacy_icon": "VLC.png",
@@ -294,8 +302,16 @@ MAC_APP_SPECS = [
         "label": "Visual Studio Code",
         "legacy_icon": "VSCODE.png",
         "aliases": ["Visual Studio Code", "VS Code", "Code"],
-        "bundle_ids": ["com.microsoft.VSCode"],
+        "bundle_ids": ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"],
         "executables": ["Code"],
+    },
+    {
+        "id": "com.todesktop.230313mzl4w4u92",
+        "label": "Cursor",
+        "legacy_icon": "",
+        "aliases": ["Cursor"],
+        "bundle_ids": ["com.todesktop.230313mzl4w4u92"],
+        "executables": ["Cursor"],
     },
     {
         "id": "com.apple.finder",

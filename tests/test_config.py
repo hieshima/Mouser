@@ -3,11 +3,23 @@ import ntpath
 import os
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
 from core import app_catalog
 from core import config
+
+
+@contextmanager
+def _platform_catalog(platform):
+    original_cache = app_catalog._CATALOG_CACHE
+    try:
+        app_catalog._CATALOG_CACHE = None
+        with patch.object(app_catalog.sys, "platform", platform):
+            yield
+    finally:
+        app_catalog._CATALOG_CACHE = original_cache
 
 
 class ConfigMigrationTests(unittest.TestCase):
@@ -262,6 +274,102 @@ class AppCatalogTests(unittest.TestCase):
             )
         )
         self.assertIn("Google Chrome", resolved["aliases"])
+
+    def test_mac_catalog_contains_profile_identity_targets(self):
+        ids = {
+            spec["id"]: spec
+            for spec in app_catalog.MAC_APP_SPECS
+        }
+
+        self.assertIn("org.mozilla.firefox", ids)
+        self.assertIn("org.mozilla.firefox", ids["org.mozilla.firefox"]["bundle_ids"])
+        self.assertIn("firefox", ids["org.mozilla.firefox"]["executables"])
+
+        self.assertIn("com.todesktop.230313mzl4w4u92", ids)
+        self.assertIn(
+            "com.todesktop.230313mzl4w4u92",
+            ids["com.todesktop.230313mzl4w4u92"]["bundle_ids"],
+        )
+
+        self.assertIn("com.microsoft.VSCode", ids)
+        self.assertIn(
+            "com.microsoft.VSCodeInsiders",
+            ids["com.microsoft.VSCode"]["bundle_ids"],
+        )
+        self.assertNotIn("Electron", ids["com.microsoft.VSCode"]["executables"])
+
+    def test_resolve_app_spec_for_firefox_bundle_id_matches_alias(self):
+        with _platform_catalog("darwin"):
+            by_id = app_catalog.resolve_app_spec("org.mozilla.firefox")
+            by_alias = app_catalog.resolve_app_spec("Firefox")
+            by_executable = app_catalog.resolve_app_spec("firefox")
+
+        self.assertEqual(by_id["id"], "org.mozilla.firefox")
+        self.assertEqual(by_alias["id"], "org.mozilla.firefox")
+        self.assertEqual(by_executable["id"], "org.mozilla.firefox")
+
+    def test_resolve_app_spec_for_cursor_bundle_id_matches_alias(self):
+        with _platform_catalog("darwin"):
+            by_id = app_catalog.resolve_app_spec("com.todesktop.230313mzl4w4u92")
+            by_alias = app_catalog.resolve_app_spec("Cursor")
+
+        self.assertEqual(by_id["id"], "com.todesktop.230313mzl4w4u92")
+        self.assertEqual(by_alias["id"], "com.todesktop.230313mzl4w4u92")
+
+    def test_generic_electron_executable_does_not_resolve_as_visual_studio_code(self):
+        fake_catalog = [
+            {
+                "id": "com.microsoft.VSCode",
+                "label": "Visual Studio Code",
+                "path": "/Applications/Visual Studio Code.app",
+                "aliases": [
+                    "com.microsoft.VSCode",
+                    "Visual Studio Code",
+                    "VS Code",
+                    "Code",
+                ],
+                "legacy_icon": "VSCODE.png",
+            },
+            {
+                "id": "com.example.electron",
+                "label": "Example Electron",
+                "path": "/Applications/Example Electron.app",
+                "aliases": ["Electron"],
+                "legacy_icon": "",
+            },
+        ]
+
+        with (
+            _platform_catalog("darwin"),
+            patch.object(app_catalog, "get_app_catalog", return_value=fake_catalog),
+        ):
+            resolved = app_catalog.resolve_app_spec("Electron")
+
+        self.assertEqual(resolved["id"], "com.example.electron")
+
+    def test_get_profile_for_app_matches_mac_bundle_identity(self):
+        cfg = {
+            "profiles": {
+                "default": {"apps": []},
+                "firefox": {"apps": ["Firefox"]},
+                "cursor": {"apps": ["Cursor"]},
+                "code": {"apps": ["Visual Studio Code"]},
+            }
+        }
+
+        with _platform_catalog("darwin"):
+            self.assertEqual(
+                config.get_profile_for_app(cfg, "org.mozilla.firefox"),
+                "firefox",
+            )
+            self.assertEqual(
+                config.get_profile_for_app(cfg, "com.todesktop.230313mzl4w4u92"),
+                "cursor",
+            )
+            self.assertEqual(
+                config.get_profile_for_app(cfg, "com.microsoft.VSCodeInsiders"),
+                "code",
+            )
 
     def test_resolve_app_spec_for_windows_exe_path_uses_curated_label(self):
         app_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
