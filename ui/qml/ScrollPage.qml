@@ -11,6 +11,43 @@ Item {
     // Reactive shortcut — all s["key"] bindings update when lm.languageChanged fires
     property var s: lm.strings
 
+    function updateStatusText() {
+        if (backend.updateInstallStatus === "checking")
+            return s["scroll.update_checking"]
+        if (backend.updateInstallStatus === "downloading")
+            return s["scroll.update_downloading"]
+        if (backend.updateInstallStatus === "verifying")
+            return s["scroll.update_verifying"]
+        if (backend.updateInstallStatus === "ready_to_install")
+            return s["scroll.update_ready"]
+        if (backend.updateInstallStatus === "installing")
+            return s["scroll.update_installing"]
+        if (backend.updateInstallStatus === "installed")
+            return backend.updateInstallMessage ? s["scroll.update_installed_version"].replace("%1", backend.updateInstallMessage) : s["scroll.update_installed"]
+        if (backend.updateInstallStatus === "cancelled")
+            return s["scroll.update_cancelled"]
+        if (backend.updateInstallStatus === "manual_fallback") {
+            if (backend.updateInstallMessage === "macos")
+                return s["scroll.update_manual_macos"]
+            if (backend.updateInstallMessage === "linux")
+                return s["scroll.update_manual_linux"]
+            if (backend.updateInstallMessage === "windows")
+                return s["scroll.update_manual_windows"]
+            if (backend.updateInstallMessage === "no_asset")
+                return s["scroll.update_no_asset"]
+            return s["scroll.update_manual"]
+        }
+        if (backend.updateInstallStatus === "error") {
+            var key = "scroll.update_error_" + backend.updateInstallMessage
+            if (s[key])
+                return s[key]
+            return s["scroll.update_error"]
+        }
+        if (backend.latestUpdateVersion)
+            return s["scroll.update_available"].replace("%1", backend.latestUpdateVersion)
+        return s["scroll.update_idle"]
+    }
+
     readonly property var appearanceOptions: [
         { label: s["scroll.system"], value: "system" },
         { label: s["scroll.light"],  value: "light"  },
@@ -763,50 +800,118 @@ Item {
 
                     Rectangle {
                         width: parent.width
-                        height: 62
+                        height: 118
                         radius: 10
                         color: scrollPage.theme.bgSubtle
 
-                        RowLayout {
+                        ColumnLayout {
                             anchors {
                                 fill: parent
                                 leftMargin: 16
                                 rightMargin: 16
+                                topMargin: 10
+                                bottomMargin: 10
                             }
                             spacing: 12
 
-                            Column {
+                            RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 3
+                                spacing: 12
 
-                                Text {
-                                    text: s["scroll.check_for_updates"]
-                                    font {
-                                        family: uiState.fontFamily
-                                        pixelSize: 13
+                                Column {
+                                    Layout.fillWidth: true
+                                    spacing: 3
+
+                                    Text {
+                                        text: s["scroll.check_for_updates"]
+                                        font {
+                                            family: uiState.fontFamily
+                                            pixelSize: 13
+                                        }
+                                        color: scrollPage.theme.textPrimary
                                     }
-                                    color: scrollPage.theme.textPrimary
+
+                                    Text {
+                                        width: parent.width
+                                        text: s["scroll.check_for_updates_desc"]
+                                        font {
+                                            family: uiState.fontFamily
+                                            pixelSize: 11
+                                        }
+                                        color: scrollPage.theme.textSecondary
+                                        wrapMode: Text.WordWrap
+                                    }
                                 }
 
+                                Switch {
+                                    id: checkUpdatesSwitch
+                                    checked: backend.checkForUpdates
+                                    focusPolicy: Qt.StrongFocus
+                                    Material.accent: scrollPage.theme.accent
+                                    Accessible.name: s["scroll.check_for_updates"]
+                                    onClicked: backend.setCheckForUpdates(checked)
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
                                 Text {
-                                    width: parent.width
-                                    text: s["scroll.check_for_updates_desc"]
+                                    Layout.fillWidth: true
+                                    text: scrollPage.updateStatusText()
                                     font {
                                         family: uiState.fontFamily
                                         pixelSize: 11
                                     }
                                     color: scrollPage.theme.textSecondary
-                                    wrapMode: Text.WordWrap
+                                    elide: Text.ElideRight
                                 }
-                            }
 
-                            Switch {
-                                id: checkUpdatesSwitch
-                                checked: backend.checkForUpdates
-                                focusPolicy: Qt.StrongFocus
-                                Material.accent: scrollPage.theme.accent
-                                Accessible.name: s["scroll.check_for_updates"]
-                                onClicked: backend.setCheckForUpdates(checked)
+                                ProgressBar {
+                                    Layout.preferredWidth: 120
+                                    visible: backend.updateInstallStatus === "downloading"
+                                    from: 0
+                                    to: 100
+                                    value: backend.updateInstallProgress
+                                }
+
+                                Button {
+                                    text: s["scroll.update_check"]
+                                    enabled: !backend.updateInstallInProgress
+                                    onClicked: backend.manualCheckForUpdates()
+                                }
+
+                                Button {
+                                    text: backend.isWindows ? s["scroll.update_download"] : s["scroll.update_verify"]
+                                    visible: backend.latestUpdateVersion !== ""
+                                             && !backend.updateInstallCanInstall
+                                             && (!backend.isWindows || backend.updateInstallEnabled)
+                                    enabled: !backend.updateInstallInProgress
+                                    onClicked: backend.prepareLatestUpdate()
+                                }
+
+                                Button {
+                                    text: s["scroll.update_cancel"]
+                                    visible: backend.updateInstallStatus === "checking"
+                                             || backend.updateInstallStatus === "downloading"
+                                             || backend.updateInstallStatus === "verifying"
+                                    onClicked: backend.cancelUpdatePreparation()
+                                }
+
+                                Button {
+                                    text: s["scroll.update_install"]
+                                    visible: backend.updateInstallCanInstall && backend.updateInstallEnabled
+                                    enabled: !backend.updateInstallInProgress
+                                    onClicked: backend.installPreparedUpdate()
+                                }
+
+                                Button {
+                                    text: s["scroll.update_open_release"]
+                                    visible: backend.latestUpdateVersion !== ""
+                                    enabled: !backend.updateInstallInProgress
+                                    onClicked: backend.openLatestReleasePage()
+                                }
                             }
                         }
                     }

@@ -224,7 +224,32 @@ jobs:
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+
       - uses: actions/download-artifact@v8
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Generate update metadata
+        run: |
+          mkdir -p update-assets
+          cp Mouser-Windows/Mouser-Windows.zip update-assets/
+          cp Mouser-macOS/Mouser-macOS.zip update-assets/
+          cp Mouser-macOS-intel/Mouser-macOS-intel.zip update-assets/
+          cp Mouser-Linux/Mouser-Linux.zip update-assets/
+          python tools/generate_update_manifest.py \
+            --repo "${{ github.repository }}" \
+            --tag "${{ github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --asset-dir update-assets \
+            --output "mouser-${{ github.ref_name }}-update.json"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Mouser-Update-Metadata
+          path: mouser-${{ github.ref_name }}-update.json
 
       - name: Create or update GitHub Release
         env:
@@ -238,7 +263,8 @@ jobs:
               Mouser-Windows/Mouser-Windows.zip \
               Mouser-macOS/Mouser-macOS.zip \
               Mouser-macOS-intel/Mouser-macOS-intel.zip \
-              Mouser-Linux/Mouser-Linux.zip
+              Mouser-Linux/Mouser-Linux.zip \
+              mouser-${{ github.ref_name }}-update.json
           else
             gh release create "${{ github.ref_name }}" \
               --repo "${{ github.repository }}" \
@@ -247,5 +273,6 @@ jobs:
               Mouser-Windows/Mouser-Windows.zip \
               Mouser-macOS/Mouser-macOS.zip \
               Mouser-macOS-intel/Mouser-macOS-intel.zip \
-              Mouser-Linux/Mouser-Linux.zip
+              Mouser-Linux/Mouser-Linux.zip \
+              mouser-${{ github.ref_name }}-update.json
           fi

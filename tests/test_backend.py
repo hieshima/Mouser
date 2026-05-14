@@ -1,10 +1,14 @@
 import copy
+import json
+from pathlib import Path
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from core.config import DEFAULT_CONFIG
+from core.updater import UpdateCheckState
 
 try:
     from PySide6.QtCore import QCoreApplication, Qt, QUrl
@@ -43,6 +47,9 @@ class _FakeEngine:
         self.gesture_callback = None
         self.status_callback = None
         self.debug_enabled = None
+        self.start_count = 0
+        self.stop_count = 0
+        self.start_error = None
 
     def set_profile_change_callback(self, cb):
         self.profile_callback = cb
@@ -67,6 +74,14 @@ class _FakeEngine:
 
     def set_debug_enabled(self, enabled):
         self.debug_enabled = enabled
+
+    def start(self):
+        self.start_count += 1
+        if self.start_error:
+            raise self.start_error
+
+    def stop(self):
+        self.stop_count += 1
 
 
 @unittest.skipIf(Backend is None, "PySide6 not installed in test environment")
@@ -156,6 +171,490 @@ class BackendDeviceLayoutTests(unittest.TestCase):
             backend.manualCheckForUpdates()
 
         start_check.assert_called_once_with(manual=True)
+
+    def test_prepare_latest_update_uses_manual_fallback_for_macos(self):
+        from pathlib import Path
+
+        from core.update_installer import (
+            APP_ID,
+            RuntimeLocation,
+            UpdateAsset,
+            UpdateManifest,
+        )
+
+        backend = self._make_backend()
+        backend._latest_update_version = "3.7.0"
+        backend._update_state = UpdateCheckState(highest_trusted_build=30699)
+        manifest = UpdateManifest(
+            schema=1,
+            app_id=APP_ID,
+            channel="stable",
+            version="3.7.0",
+            tag="v3.7.0",
+            build_number=30700,
+            expires_at="2026-06-01T00:00:00Z",
+            commit="abc",
+            release_notes_url="https://example.test",
+            assets={
+                "macos-arm64": UpdateAsset(
+                    "macos-arm64",
+                    "Mouser-macOS.zip",
+                    "https://example.test/Mouser-macOS.zip",
+                    1,
+                    "a" * 64,
+                )
+            },
+        )
+        runtime = RuntimeLocation(
+            executable=Path("/Applications/Mouser.app/Contents/MacOS/Mouser"),
+            install_root=Path("/Applications/Mouser.app"),
+            app_data_dir=Path("/tmp/mouser"),
+            frozen=True,
+            platform_key="macos-arm64",
+            update_supported=False,
+        )
+
+        with (
+            patch("ui.backend.fetch_update_manifest_for_release", return_value=manifest) as fetch_manifest,
+            patch("ui.backend.locate_runtime", return_value=runtime),
+        ):
+            backend._runPrepareLatestUpdate()
+            _ensure_qapp().processEvents()
+
+        fetch_manifest.assert_called_once_with(
+            "v3.7.0",
+            repo="TomBadash/Mouser",
+            highest_trusted_build=30699,
+        )
+        self.assertEqual(backend.updateInstallStatus, "manual_fallback")
+        self.assertFalse(backend.updateInstallCanInstall)
+        self.assertEqual(backend.updateInstallMessage, "macos")
+
+    def test_prepare_latest_update_keeps_windows_install_hidden_by_default(self):
+        from pathlib import Path
+
+        from core.update_installer import (
+            APP_ID,
+            RuntimeLocation,
+            UpdateAsset,
+            UpdateManifest,
+        )
+
+        backend = self._make_backend()
+        backend._latest_update_version = "3.7.0"
+        manifest = UpdateManifest(
+            schema=1,
+            app_id=APP_ID,
+            channel="stable",
+            version="3.7.0",
+            tag="v3.7.0",
+            build_number=30700,
+            expires_at="2026-06-01T00:00:00Z",
+            commit="abc",
+            release_notes_url="https://example.test",
+            assets={
+                "windows-x64": UpdateAsset(
+                    "windows-x64",
+                    "Mouser-Windows.zip",
+                    "https://example.test/Mouser-Windows.zip",
+                    1,
+                    "a" * 64,
+                )
+            },
+        )
+        runtime = RuntimeLocation(
+            executable=Path("C:/Mouser/Mouser.exe"),
+            install_root=Path("C:/Mouser"),
+            app_data_dir=Path("C:/Users/test/AppData/Local/Mouser"),
+            frozen=True,
+            platform_key="windows-x64",
+            update_supported=True,
+        )
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("ui.backend.fetch_update_manifest_for_release", return_value=manifest),
+            patch("ui.backend.locate_runtime", return_value=runtime),
+            patch("ui.backend.prepare_downloaded_asset") as prepare_asset,
+        ):
+            backend._runPrepareLatestUpdate()
+            _ensure_qapp().processEvents()
+            prepare_asset.assert_not_called()
+            self.assertEqual(backend.updateInstallStatus, "manual_fallback")
+            self.assertFalse(backend.updateInstallCanInstall)
+            self.assertEqual(backend.updateInstallMessage, "windows")
+            self.assertFalse(backend.updateInstallEnabled)
+
+    def test_prepare_latest_update_uses_manual_fallback_for_unsupported_windows_runtime(self):
+        from pathlib import Path
+
+        from core.update_installer import (
+            APP_ID,
+            RuntimeLocation,
+            UpdateAsset,
+            UpdateManifest,
+        )
+
+        backend = self._make_backend()
+        backend._latest_update_version = "3.7.0"
+        manifest = UpdateManifest(
+            schema=1,
+            app_id=APP_ID,
+            channel="stable",
+            version="3.7.0",
+            tag="v3.7.0",
+            build_number=30700,
+            expires_at="2026-06-01T00:00:00Z",
+            commit="abc",
+            release_notes_url="https://example.test",
+            assets={
+                "windows-x64": UpdateAsset(
+                    "windows-x64",
+                    "Mouser-Windows.zip",
+                    "https://example.test/Mouser-Windows.zip",
+                    1,
+                    "a" * 64,
+                )
+            },
+        )
+        runtime = RuntimeLocation(
+            executable=Path("C:/Program Files/Mouser/Mouser.exe"),
+            install_root=Path("C:/Program Files/Mouser"),
+            app_data_dir=Path("C:/Users/test/AppData/Local/Mouser"),
+            frozen=True,
+            platform_key="windows-x64",
+            update_supported=False,
+            reason="install path not writable",
+        )
+
+        with (
+            patch.dict("os.environ", {"MOUSER_ENABLE_UPDATE_INSTALL": "1"}),
+            patch("ui.backend.fetch_update_manifest_for_release", return_value=manifest),
+            patch("ui.backend.locate_runtime", return_value=runtime),
+            patch("ui.backend.prepare_downloaded_asset") as prepare_asset,
+        ):
+            backend._runPrepareLatestUpdate()
+            _ensure_qapp().processEvents()
+
+            prepare_asset.assert_not_called()
+            self.assertEqual(backend.updateInstallStatus, "manual_fallback")
+            self.assertFalse(backend.updateInstallCanInstall)
+            self.assertEqual(backend.updateInstallMessage, "windows")
+            self.assertTrue(backend.updateInstallEnabled)
+
+    def test_prepare_latest_update_stages_windows_bundle_next_to_install_root(self):
+        from core.update_installer import (
+            APP_ID,
+            RuntimeLocation,
+            StagedUpdate,
+            UpdateAsset,
+            UpdateManifest,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            install = root / "Mouser"
+            install.mkdir()
+            backend = self._make_backend()
+            backend._latest_update_version = "3.7.0"
+            manifest = UpdateManifest(
+                schema=1,
+                app_id=APP_ID,
+                channel="stable",
+                version="3.7.0",
+                tag="v3.7.0",
+                build_number=30700,
+                expires_at="2026-06-01T00:00:00Z",
+                commit="abc",
+                release_notes_url="https://example.test",
+                assets={
+                    "windows-x64": UpdateAsset(
+                        "windows-x64",
+                        "Mouser-Windows.zip",
+                        "https://example.test/Mouser-Windows.zip",
+                        1,
+                        "a" * 64,
+                    )
+                },
+            )
+            runtime = RuntimeLocation(
+                executable=install / "Mouser.exe",
+                install_root=install,
+                app_data_dir=root / "data",
+                frozen=True,
+                platform_key="windows-x64",
+                update_supported=True,
+            )
+            archive = root / "Mouser-Windows.zip"
+            staged_app = root / ".Mouser.update-v3.7.0-1234" / "Mouser"
+            staged = StagedUpdate(
+                archive_path=archive,
+                stage_dir=staged_app.parent,
+                app_root=staged_app,
+                platform_key="windows-x64",
+                asset_name="Mouser-Windows.zip",
+            )
+
+            with (
+                patch.dict("os.environ", {"MOUSER_ENABLE_UPDATE_INSTALL": "1"}),
+                patch("ui.backend.fetch_update_manifest_for_release", return_value=manifest),
+                patch("ui.backend.locate_runtime", return_value=runtime),
+                patch("ui.backend.prepare_downloaded_asset", return_value=archive),
+                patch("ui.backend.extract_validated_zip", return_value=staged) as extract_zip,
+                patch("ui.backend.os.getpid", return_value=1234),
+            ):
+                backend._runPrepareLatestUpdate()
+                _ensure_qapp().processEvents()
+
+            extract_zip.assert_called_once()
+            stage_arg = extract_zip.call_args.args[1]
+            self.assertEqual(stage_arg.parent, install.resolve().parent)
+            self.assertEqual(stage_arg.name, ".Mouser.update-v3.7.0-1234")
+            self.assertEqual(backend.updateInstallStatus, "ready_to_install")
+            self.assertTrue(backend.updateInstallCanInstall)
+
+    def test_install_prepared_update_launches_helper_and_quits(self):
+        backend = self._make_backend()
+        backend._pending_update_plan_path = "/tmp/pending-update.json"
+        backend._update_install_can_install = True
+
+        with (
+            patch.dict("os.environ", {"MOUSER_ENABLE_UPDATE_INSTALL": "1"}),
+            patch("ui.backend.launch_windows_update_helper") as launch_helper,
+            patch("ui.backend.QCoreApplication.quit") as quit_app,
+        ):
+            backend.installPreparedUpdate()
+
+        launch_helper.assert_called_once_with("/tmp/pending-update.json", helper_dir=None)
+        quit_app.assert_called_once()
+        self.assertEqual(backend.updateInstallStatus, "installing")
+
+    def test_install_prepared_update_restarts_engine_when_helper_launch_fails(self):
+        engine = _FakeEngine()
+        backend = self._make_backend(engine=engine)
+        backend._pending_update_plan_path = "/tmp/pending-update.json"
+        backend._update_install_can_install = True
+
+        with (
+            patch.dict("os.environ", {"MOUSER_ENABLE_UPDATE_INSTALL": "1"}),
+            patch(
+                "ui.backend.launch_windows_update_helper",
+                side_effect=OSError("helper failed"),
+            ),
+            patch("ui.backend.QCoreApplication.quit") as quit_app,
+        ):
+            backend.installPreparedUpdate()
+
+        self.assertEqual(engine.stop_count, 1)
+        self.assertEqual(engine.start_count, 1)
+        quit_app.assert_not_called()
+        self.assertEqual(backend.updateInstallStatus, "error")
+
+    def test_cancel_update_preparation_sets_inline_cancelled_state(self):
+        backend = self._make_backend()
+        backend._update_install_status = "downloading"
+
+        backend.cancelUpdatePreparation()
+
+        self.assertTrue(backend._update_cancel.is_set())
+        self.assertEqual(backend.updateInstallStatus, "cancelled")
+
+    def test_cancel_before_prepare_worker_runs_does_not_fetch_metadata(self):
+        from core.update_installer import RuntimeLocation
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp)
+            backend = self._make_backend()
+            backend._latest_update_version = "3.7.0"
+            runtime = RuntimeLocation(
+                executable=data / "Mouser.exe",
+                install_root=data,
+                app_data_dir=data,
+                frozen=True,
+                platform_key="windows-x64",
+                update_supported=True,
+            )
+            captured = {}
+
+            def make_thread(*, target, name, daemon):
+                captured["target"] = target
+                captured["name"] = name
+                captured["daemon"] = daemon
+                return SimpleNamespace(start=lambda: None)
+
+            with patch("ui.backend.threading.Thread", side_effect=make_thread):
+                backend.prepareLatestUpdate()
+
+            self.assertEqual(captured["name"], "MouserPrepareUpdate")
+            self.assertTrue(captured["daemon"])
+
+            backend.cancelUpdatePreparation()
+            with (
+                patch("ui.backend.fetch_update_manifest_for_release") as fetch_manifest,
+                patch("ui.backend.locate_runtime", return_value=runtime),
+            ):
+                captured["target"]()
+                _ensure_qapp().processEvents()
+
+            fetch_manifest.assert_not_called()
+            self.assertEqual(backend.updateInstallStatus, "cancelled")
+            self.assertFalse(backend.updateInstallCanInstall)
+
+    def test_cancel_during_metadata_fetch_keeps_cancelled_state(self):
+        from pathlib import Path
+
+        from core.update_installer import APP_ID, RuntimeLocation, UpdateAsset, UpdateManifest
+
+        backend = self._make_backend()
+        backend._latest_update_version = "3.7.0"
+        manifest = UpdateManifest(
+            schema=1,
+            app_id=APP_ID,
+            channel="stable",
+            version="3.7.0",
+            tag="v3.7.0",
+            build_number=30700,
+            expires_at="2026-06-01T00:00:00Z",
+            commit="abc",
+            release_notes_url="https://example.test",
+            assets={
+                "macos-arm64": UpdateAsset(
+                    "macos-arm64",
+                    "Mouser-macOS.zip",
+                    "https://example.test/Mouser-macOS.zip",
+                    1,
+                    "a" * 64,
+                )
+            },
+        )
+        runtime = RuntimeLocation(
+            executable=Path("/Applications/Mouser.app/Contents/MacOS/Mouser"),
+            install_root=Path("/Applications/Mouser.app"),
+            app_data_dir=Path("/tmp/mouser"),
+            frozen=True,
+            platform_key="macos-arm64",
+            update_supported=False,
+        )
+
+        def fetch_and_cancel(*args, **kwargs):
+            backend._update_cancel.set()
+            return manifest
+
+        with (
+            patch("ui.backend.fetch_update_manifest_for_release", side_effect=fetch_and_cancel),
+            patch("ui.backend.locate_runtime", return_value=runtime),
+        ):
+            backend._runPrepareLatestUpdate()
+            _ensure_qapp().processEvents()
+
+        self.assertEqual(backend.updateInstallStatus, "cancelled")
+        self.assertFalse(backend.updateInstallCanInstall)
+
+    def test_prepare_latest_update_cleans_install_adjacent_stage_on_error(self):
+        from core.update_installer import (
+            APP_ID,
+            RuntimeLocation,
+            UpdateAsset,
+            UpdateInstallError,
+            UpdateManifest,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            install = root / "Mouser"
+            install.mkdir()
+            backend = self._make_backend()
+            backend._latest_update_version = "3.7.0"
+            manifest = UpdateManifest(
+                schema=1,
+                app_id=APP_ID,
+                channel="stable",
+                version="3.7.0",
+                tag="v3.7.0",
+                build_number=30700,
+                expires_at="2026-06-01T00:00:00Z",
+                commit="abc",
+                release_notes_url="https://example.test",
+                assets={
+                    "windows-x64": UpdateAsset(
+                        "windows-x64",
+                        "Mouser-Windows.zip",
+                        "https://example.test/Mouser-Windows.zip",
+                        1,
+                        "a" * 64,
+                    )
+                },
+            )
+            runtime = RuntimeLocation(
+                executable=install / "Mouser.exe",
+                install_root=install,
+                app_data_dir=root / "data",
+                frozen=True,
+                platform_key="windows-x64",
+                update_supported=True,
+            )
+            archive = root / "Mouser-Windows.zip"
+            stage_dir = root / ".Mouser.update-v3.7.0-1234"
+
+            def fail_extract(_archive, stage_arg, **_kwargs):
+                self.assertEqual(stage_arg, stage_dir)
+                stage_arg.mkdir(parents=True)
+                (stage_arg / "partial.txt").write_text("partial", encoding="utf-8")
+                raise UpdateInstallError("bad_archive", "bad archive")
+
+            with (
+                patch.dict("os.environ", {"MOUSER_ENABLE_UPDATE_INSTALL": "1"}),
+                patch("ui.backend.fetch_update_manifest_for_release", return_value=manifest),
+                patch("ui.backend.locate_runtime", return_value=runtime),
+                patch("ui.backend.prepare_downloaded_asset", return_value=archive),
+                patch("ui.backend.same_volume_windows_stage_dir", return_value=stage_dir),
+                patch("ui.backend.extract_validated_zip", side_effect=fail_extract),
+            ):
+                backend._runPrepareLatestUpdate()
+                _ensure_qapp().processEvents()
+
+            self.assertEqual(backend.updateInstallStatus, "error")
+            self.assertEqual(backend.updateInstallMessage, "bad_archive")
+            self.assertFalse(stage_dir.exists())
+
+    def test_startup_consumes_successful_update_marker_and_persists_build_number(self):
+        from core.update_installer import RuntimeLocation
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp)
+            marker = data / "last-update-result.txt"
+            marker.write_text(
+                json.dumps(
+                    {"status": "installed", "version": "3.7.0", "build_number": 30700}
+                ),
+                encoding="utf-8",
+            )
+            runtime = RuntimeLocation(
+                executable=data / "Mouser.exe",
+                install_root=data,
+                app_data_dir=data,
+                frozen=True,
+                platform_key="windows-x64",
+                update_supported=True,
+            )
+            cfg = copy.deepcopy(DEFAULT_CONFIG)
+            cfg.setdefault("settings", {})["update_check_state"] = {
+                "highest_trusted_build": 30600
+            }
+
+            with (
+                patch("ui.backend.load_config", return_value=cfg),
+                patch("ui.backend.save_config") as save_config,
+                patch("ui.backend.supports_login_startup", return_value=False),
+                patch("ui.backend.locate_runtime", return_value=runtime),
+            ):
+                backend = Backend(engine=_FakeEngine())
+
+            self.assertFalse(marker.exists())
+            self.assertEqual(backend.updateInstallStatus, "installed")
+            self.assertEqual(backend.updateInstallMessage, "3.7.0")
+            self.assertEqual(backend._update_state.highest_trusted_build, 30700)
+            save_config.assert_called_with(backend._cfg)
 
     def test_update_check_result_persists_state_on_main_thread(self):
         backend = self._make_backend()

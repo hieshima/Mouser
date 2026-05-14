@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 import json
+import os
 import re
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -15,6 +17,7 @@ from core.version import APP_VERSION
 
 DEFAULT_RELEASE_REPO = "TomBadash/Mouser"
 _GITHUB_API = "https://api.github.com/repos/{repo}/releases/latest"
+_LATEST_RELEASE_URL_ENV = "MOUSER_UPDATE_LATEST_RELEASE_URL"
 _USER_AGENT = f"Mouser/{APP_VERSION}"
 DEFAULT_AUTO_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 
@@ -35,6 +38,7 @@ class UpdateCheckState:
     backoff_until: float = 0.0
     last_seen_latest_version: str = ""
     skipped_version: str = ""
+    highest_trusted_build: int = 0
 
     @classmethod
     def from_dict(cls, data) -> "UpdateCheckState":
@@ -54,6 +58,7 @@ class UpdateCheckState:
             backoff_until=number("backoff_until"),
             last_seen_latest_version=str(data.get("last_seen_latest_version") or ""),
             skipped_version=str(data.get("skipped_version") or ""),
+            highest_trusted_build=int(number("highest_trusted_build")),
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -64,6 +69,7 @@ class UpdateCheckState:
             "backoff_until": self.backoff_until,
             "last_seen_latest_version": self.last_seen_latest_version,
             "skipped_version": self.skipped_version,
+            "highest_trusted_build": self.highest_trusted_build,
         }
 
 
@@ -130,6 +136,13 @@ def _retry_after_until(headers, now: float) -> float:
     return now
 
 
+def _latest_release_url(repo: str) -> str:
+    override = os.environ.get(_LATEST_RELEASE_URL_ENV, "").strip()
+    if override:
+        return override
+    return _GITHUB_API.format(repo=repo)
+
+
 def _request(repo: str, state: UpdateCheckState) -> urllib.request.Request:
     headers = {
         "Accept": "application/vnd.github+json",
@@ -139,7 +152,11 @@ def _request(repo: str, state: UpdateCheckState) -> urllib.request.Request:
         headers["If-None-Match"] = state.etag
     if state.last_modified:
         headers["If-Modified-Since"] = state.last_modified
-    return urllib.request.Request(_GITHUB_API.format(repo=repo), headers=headers)
+    return urllib.request.Request(_latest_release_url(repo), headers=headers)
+
+
+def _read_json_response(response):
+    return json.loads(response.read().decode("utf-8-sig"))
 
 
 def _state_after_attempt(state: UpdateCheckState, now: float, **updates) -> UpdateCheckState:
@@ -220,7 +237,18 @@ def check_latest_release(
                     reachable=False,
                     rate_limited=bool(backoff > now),
                 )
-            payload = json.loads(response.read().decode("utf-8"))
+            try:
+                payload = _read_json_response(response)
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                print(
+                    f"[update] release metadata could not be read: {exc}",
+                    file=sys.stderr,
+                )
+                return UpdateCheckResult(
+                    None,
+                    _state_after_attempt(state, now),
+                    reachable=False,
+                )
             release = _parse_release(payload)
             next_state = _state_after_attempt(
                 state,

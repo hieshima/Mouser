@@ -392,6 +392,10 @@ def _runtime_launch_path() -> str:
 def main():
     _print_startup_times()
     _t5 = _time.perf_counter()
+    if len(sys.argv) >= 3 and sys.argv[1] == "--mouser-apply-update":
+        from core.update_installer import apply_windows_update_from_state
+
+        raise SystemExit(apply_windows_update_from_state(sys.argv[2]))
     argv, hid_backend, start_hidden, force_show = _parse_cli_args(sys.argv)
     cfg = load_config()
     cfg_settings = cfg.get("settings", {})

@@ -1,4 +1,5 @@
 import json
+import io
 import unittest
 import urllib.error
 from unittest.mock import patch
@@ -65,6 +66,36 @@ class UpdaterTests(unittest.TestCase):
         self.assertIn("TomBadash/Mouser", request.full_url)
         self.assertEqual(request.get_header("User-agent"), f"Mouser/{APP_VERSION}")
 
+    def test_check_latest_release_accepts_utf8_bom_response(self):
+        payload = (
+            b'\xef\xbb\xbf{"tag_name":"v3.7.1",'
+            b'"html_url":"https://github.com/TomBadash/Mouser/releases/tag/v3.7.1"}'
+        )
+
+        with patch("urllib.request.urlopen", return_value=_FakeResponse(payload)):
+            result = check_latest_release(now=10.0, manual=True)
+
+        self.assertEqual(result.release.tag_name, "v3.7.1")
+        self.assertTrue(result.reachable)
+
+    def test_fetch_latest_release_can_use_test_endpoint_override(self):
+        payload = {
+            "tag_name": "v3.7.1",
+            "html_url": "https://example.test/releases/v3.7.1",
+        }
+        with (
+            patch.dict(
+                "os.environ",
+                {"MOUSER_UPDATE_LATEST_RELEASE_URL": "http://127.0.0.1:8765/release.json"},
+            ),
+            patch("urllib.request.urlopen", return_value=_FakeResponse(payload)) as mocked,
+        ):
+            release = fetch_latest_release(timeout=1)
+
+        self.assertEqual(release.tag_name, "v3.7.1")
+        request = mocked.call_args.args[0]
+        self.assertEqual(request.full_url, "http://127.0.0.1:8765/release.json")
+
     def test_fetch_latest_release_returns_none_on_malformed_response(self):
         with patch(
             "urllib.request.urlopen",
@@ -102,6 +133,20 @@ class UpdaterTests(unittest.TestCase):
         self.assertFalse(result.reachable)
         self.assertEqual(result.state.last_check, 50.0)
         self.assertEqual(result.state.etag, '"malformed"')
+
+    def test_check_latest_release_logs_unreadable_json_response(self):
+        stderr = io.StringIO()
+
+        with (
+            patch("urllib.request.urlopen", return_value=_FakeResponse(b"{")),
+            patch("sys.stderr", new=stderr),
+        ):
+            result = check_latest_release(now=60.0, manual=True)
+
+        self.assertIsNone(result.release)
+        self.assertFalse(result.reachable)
+        self.assertEqual(result.state.last_check, 60.0)
+        self.assertIn("[update] release metadata could not be read:", stderr.getvalue())
 
     def test_check_latest_release_records_attempt_on_network_error(self):
         with patch("urllib.request.urlopen", side_effect=OSError("network down")):
